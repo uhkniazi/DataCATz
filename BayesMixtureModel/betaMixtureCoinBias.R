@@ -153,4 +153,51 @@ logit.inv = function(p) {exp(p)/(exp(p)+1) }
 # fit = laplace(mylogpost, start, data)
 # logit.inv(fit$mode)
 
+mylogpost_m1 = function(theta, data){
+  ## theta contains parameters we wish to track
+  th = logit.inv(theta['theta'])
+  suc = data['success']
+  fail = data['fail']
+  
+  # define likelihood function
+  lf = function(s, f, t) return(dbinom(s, s+f, t, log=T))
+  
+  # calculate log posterior
+  val = lf(suc, fail, th) + dbeta(th, 6, 14, log = T)
+  return(val)
+}
 
+mylogpost_m2 = function(theta, data){
+  ## theta contains parameters we wish to track
+  th = logit.inv(theta['theta'])
+  suc = data['success']
+  fail = data['fail']
+  
+  # define likelihood function
+  lf = function(s, f, t) return(dbinom(s, s+f, t, log=T))
+  
+  # calculate log posterior
+  val = lf(suc, fail, th) + dbeta(th, 14, 6, log = T) 
+  return(val)
+}
+
+start = c(theta=logit(0.5))
+data = c(success=7, fail=3)
+
+mylogpost_m1(start, data)
+mylogpost_m2(start, data)
+
+
+fit_m1 = laplace(mylogpost_m1, start, data)
+fit_m2 = laplace(mylogpost_m2, start, data)
+
+fit_m1
+fit_m2
+
+logit.inv(fit_m1$mode)
+logit.inv(fit_m2$mode)
+
+exp(fit_m1$int)
+exp(fit_m2$int)
+
+exp(fit_m1$int) * mix.prior[1] / (exp(fit_m1$int) * mix.prior[1] + exp(fit_m2$int) * mix.prior[2])
