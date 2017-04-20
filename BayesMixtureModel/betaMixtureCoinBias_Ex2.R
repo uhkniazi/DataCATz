@@ -125,41 +125,10 @@ hist(th.sam, prob=T)
 lines(th, g.mix.post(th, data))
 
 ############################
-## try calculating the same parameters using a single function and optimizer
+## try approximating the BF using log posterior function
 library(LearnBayes)
-#library(DirichletReg)
 library(car)
-#logit = function(p) log(p/(1-p))
 logit.inv = function(p) {exp(p)/(exp(p)+1) }
-
-mylogpost = function(theta, data){
-  ## theta contains parameters we wish to track
-  th = logit.inv(theta['theta'])
-  m1 = logit.inv(theta['m1'])
-  m2 = 1-m1
-  suc = data['success']
-  fail = data['fail']
-
-  # define likelihood function
-  lf = function(s, f, t) return(dbinom(s, s+f, t, log=T))
-
-  # define mixture distribution
-  g1 = function(t) dbeta(t, 3.5, 8.5)
-  g2 = function(t) dbeta(t, 8.5, 3.5)
-  g.mix = log(m1*g1(th) + m2*g2(th))
-  ms = matrix(c(m1, m2), nrow = 1)
-  # calculate log posterior
-  val = lf(suc, fail, th) + g.mix + dunif(m1, log=T)#ddirichlet(ms, c(1, 1), log=T)
-  return(val)
-}
-
-start = c(theta=logit(0.5), m1=logit(0.9))
-data = c(success=6, fail=3)
-
-mylogpost(start, data)
-
-fit = laplace(mylogpost, start, data)
-logit.inv(fit$mode)
 
 mylogpost_m1 = function(theta, data){
   ## theta contains parameters we wish to track
@@ -189,12 +158,12 @@ mylogpost_m2 = function(theta, data){
   return(val)
 }
 
+## choose starting values
 start = c(theta=logit(0.5))
 data = c(success=6, fail=3)
 
 mylogpost_m1(start, data)
 mylogpost_m2(start, data)
-
 
 fit_m1 = laplace(mylogpost_m1, start, data)
 fit_m2 = laplace(mylogpost_m2, start, data)
@@ -202,12 +171,15 @@ fit_m2 = laplace(mylogpost_m2, start, data)
 fit_m1
 fit_m2
 
+# values for theta for each model
 logit.inv(fit_m1$mode)
 logit.inv(fit_m2$mode)
 
+# approximate posterior predictive distribution
 exp(fit_m1$int)
 exp(fit_m2$int)
 
-exp(fit_m1$int) / exp(fit_m2$int)
+BF2 = exp(fit_m1$int) / exp(fit_m2$int)
 
+# posterior prob for the model 1
 exp(fit_m1$int) * mix.prior[1] / (exp(fit_m1$int) * mix.prior[1] + exp(fit_m2$int) * mix.prior[2])

@@ -119,39 +119,8 @@ lines(th, g.mix.post(th, data))
 ############################
 ## try calculating the same parameters using a single function and optimizer
 library(LearnBayes)
-library(DirichletReg)
 library(car)
-#logit = function(p) log(p/(1-p))
 logit.inv = function(p) {exp(p)/(exp(p)+1) }
-
-# mylogpost = function(theta, data){
-#   ## theta contains parameters we wish to track
-#   th = logit.inv(theta['theta'])
-#   m1 = logit.inv(theta['m1'])
-#   m2 = 1-m1
-#   suc = data['success']
-#   fail = data['fail']
-# 
-#   # define likelihood function
-#   lf = function(s, f, t) return(dbinom(s, s+f, t, log=T))
-# 
-#   # define mixture distribution
-#   g1 = function(t) dbeta(t, 6, 14)
-#   g2 = function(t) dbeta(t, 14, 6)
-#   g.mix = log(m1*g1(th) + m2*g2(th))
-#   ms = matrix(c(m1, m2), nrow = 1)
-#   # calculate log posterior
-#   val = lf(suc, fail, th) + g.mix + dunif(m1, log=T)#ddirichlet(ms, c(1, 1), log=T)
-#   return(val)
-# }
-# 
-# start = c(theta=logit(0.5), m1=logit(0.1))
-# data = c(success=7, fail=3)
-# 
-# mylogpost(start, data)
-# 
-# fit = laplace(mylogpost, start, data)
-# logit.inv(fit$mode)
 
 mylogpost_m1 = function(theta, data){
   ## theta contains parameters we wish to track
@@ -197,7 +166,7 @@ fit_m2
 logit.inv(fit_m1$mode)
 logit.inv(fit_m2$mode)
 
-exp(fit_m1$int)
-exp(fit_m2$int)
+abline(v = logit.inv(fit_m1$mode), lty=2, col=2)
+abline(v = logit.inv(fit_m2$mode), lty=2, col=3)
 
 exp(fit_m1$int) * mix.prior[1] / (exp(fit_m1$int) * mix.prior[1] + exp(fit_m2$int) * mix.prior[2])
