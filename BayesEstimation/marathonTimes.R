@@ -155,9 +155,22 @@ sigSample.op = rnorm(1000, fit$mode['sigma'], se['sigma'])
 muSample.op = rnorm(1000, mean(time), exp(sigSample.op)/sqrt(length(time)))
 muSample2.op = rnorm(1000, fit$mode['mu'], se['mu'])
 
+########################## estimation using stan
+library(rstan)
+stanDso = rstan::stan_model(file='BayesEstimation/marathonTimes.stan')
+
+lStanData = list(Ntotal=length(time), y=time)
+
+fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=4, pars=c('mu', 'sig'))
+print(fit.stan)
+m = extract(fit.stan)
+muStan = m$mu
+sigStan = m$sig
+
 ##### lets plot all the various approximations together
 mycontour(lp, c(220, 330, 500, 9000), lData, xlab='Posterior Mean', ylab='Posterior Variance')
 # how do the simulated values earlier fit in this contour plot
+points(muStan, sigStan^2, pch=20, col='cyan')
 points(sim.1$mu, sim.1$var, pch=20, col='black')
 points(muSample, sig2Sample, pch=20, col='red')
 points(muSample.op, exp(sigSample.op)^2, pch=20, col='blue')
@@ -168,9 +181,10 @@ lines(density(muSample), col='red')
 lines(density(muSample.op), col='blue')
 lines(density(muSample2.op), col='green')
 lines(density(muSample2), col='darkgreen')
+lines(density(muStan), col='cyan')
 
 plot(density(sim.1$var), col=1, type='l', main='Posterior Variance Density')
 lines(density(sig2Sample), col='red')
 lines(density(exp(sigSample.op)^2), col='blue')
-
+lines(density(sigStan^2), col='cyan')
 
