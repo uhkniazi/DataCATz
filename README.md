@@ -15,4 +15,4 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 
 # DataCATz Repository
-Repository for code snippets at the data analysis blogs at [LaplaceBayes](laplacebayes.wordpress.com) & [DataCATz](datacatz.wordpress.com)
+Repository for code snippets at the data analysis blogs at [LaplaceBayes](https://laplacebayes.wordpress.com/) & [DataCATz](https://datacatz.wordpress.com)
