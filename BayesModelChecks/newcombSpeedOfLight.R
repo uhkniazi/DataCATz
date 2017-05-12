@@ -163,9 +163,57 @@ getPValue(t1, t2)
 # data and model, and assess whether they could have arisen by chance, under the model’s
 # own assumptions. [Gelman 2008]
 
+## define a second log posterior function for mixture
+lp2 = function(theta, data){
+  # we define the sigma on a log scale as optimizers work better
+  # if scale parameters are well behaved
+  s = exp(theta[2])
+  m = theta[1]
+  mix = 0.9
+  cont = theta[3]
+  d = data$vector # observed data vector
+  log.lik = sum(log(dnorm(d, m, s) * mix + dnorm(d, m, s*cont) * (1-mix)))
+  log.prior = 1
+  log.post = log.lik + log.prior
+  return(log.post)
+}
 
+# sanity check for function
+# choose a starting value
+start = c('mu'=mean(ivTime), 'sigma'=log(sd(ivTime)), 'cont'=1)
+lp2(start, lData)
 
+op = optim(start, lp2, control = list(fnscale = -1), data=lData)
+op$par
+exp(op$par[2])
 
+## try the laplace function from LearnBayes
+fit2 = laplace(lp2, start, lData)
+fit2
+se2 = sqrt(diag(fit2$var))
+se2
+fit2$mode+1.96*se2
+fit2$mode-1.96*se2
+
+sigSample.op = rnorm(1000, fit2$mode['sigma'], se2['sigma'])
+muSample.op = rnorm(1000, mean(lData$vector), exp(sigSample.op)/sqrt(length(lData$vector)))
+
+########## simulate 200 test quantities
+mDraws = matrix(NA, nrow = 66, ncol=200)
+mThetas = matrix(NA, nrow=200, ncol=2)
+colnames(mThetas) = c('mu', 'sd')
+
+for (i in 1:200){
+  p = sample(1:1000, size = 1)
+  s = exp(sigSample.op[p])
+  m = muSample.op[p]
+  sam = function() {
+    ind = rbinom(1, 1, 0.9)
+    return(ind * rnorm(1, m, s) + (1-ind) * rnorm(1, m, s*fit2$mode['cont']))
+  }
+  mDraws[,i] = replicate(66, sam())
+  mThetas[i,] = c(m, s)
+}
 
 
 
