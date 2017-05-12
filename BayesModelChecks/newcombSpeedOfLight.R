@@ -99,16 +99,34 @@ getPValue = function(Trep, Tobs){
 }
 ## define some test quantities to measure the lack of fit
 ## define a test quantity T(y, theta)
-T1_var = function(Yrep) return(var(Yrep))
+# The procedure for carrying out a posterior predictive model check requires specifying a test
+# quantity, T (y) or T (y, θ), and an appropriate predictive distribution for the replications
+# y rep [Gelman 2008]
+## variance
+T1_var = function(Y) return(var(Y))
+## is the model adequate except for the extreme tails
+T1_symmetry = function(Y, th){
+  Yq = quantile(Y, c(0.90, 0.10))
+  return(abs(Yq[1]-th) - abs(Yq[2]-th))
+} 
+
+## min quantity
+T1_min = function(Y){
+  return(min(Y))
+} 
+
 
 ########## simulate 200 test quantities
 mDraws = matrix(NA, nrow = 66, ncol=200)
+mThetas = matrix(NA, nrow=200, ncol=2)
+colnames(mThetas) = c('mu', 'sd')
 
 for (i in 1:200){
   p = sample(1:1000, size = 1)
   s = exp(sigSample.op[p])
   m = muSample.op[p]
   mDraws[,i] = rnorm(66, m, s)
+  mThetas[i,] = c(m, s)
 }
 
 ### get the test quantity from the test function
@@ -117,3 +135,37 @@ par(p.old)
 hist(t1, xlab='Test Quantity - Variance', main='', breaks=50)
 abline(v = var(lData$vector), lwd=2)
 getPValue(t1, var(lData$vector))
+# 0.48, the result from Figure 6.4 Gelman [2008]
+# The sample variance does not make a good test statistic because it is a sufficient statistic of
+# the model and thus, in the absence of an informative prior distribution, the posterior
+# distribution will automatically be centered near the observed value. We are not at all
+# surprised to find an estimated p-value close to 1/2 . [Gelman 2008]
+
+## test for symmetry
+t1 = sapply(seq_along(1:200), function(x) T1_symmetry(mDraws[,x], mThetas[x,'mu']))
+t2 = sapply(seq_along(1:200), function(x) T1_symmetry(lData$vector, mThetas[x,'mu']))
+plot(t2, t1, xlim=c(-12, 12), ylim=c(-12, 12), pch=20, xlab='Realized Value T(Yobs, Theta)',
+     ylab='Test Value T(Yrep, Theta)', main='Symmetry Check')
+abline(0,1)
+getPValue(t1, t2) # we should see somewhere around 0.2 on repeated simulations
+# The estimated p-value is 0.26, implying that any observed asymmetry in the middle of the distribution can easily be
+# explained by sampling variation. [Gelman 2008]
+
+## testing for outlier detection i.e. the minimum value show in the histograms earlier
+t1 = apply(mDraws, 2, T1_min)
+t2 = T1_min(lData$vector)
+getPValue(t1, t2)
+
+# Major failures of the model, typically corresponding to extreme tail-area probabilities (less
+# than 0.01 or more than 0.99), can be addressed by expanding the model appropriately. [Gelman 2008]
+# The relevant goal is not to answer the question, ‘Do the data come from the assumed
+# model?’ (to which the answer is almost always no), but to quantify the discrepancies between
+# data and model, and assess whether they could have arisen by chance, under the model’s
+# own assumptions. [Gelman 2008]
+
+
+
+
+
+
+
