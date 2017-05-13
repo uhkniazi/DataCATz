@@ -8,6 +8,8 @@ library(LearnBayes)
 ## the example is taken from Simon Newcomb's experiment to measure the speed of light
 ## we follow Gelman [2008] Page 67 for the analysis.
 
+set.seed(123) # for replication
+
 dfData = read.csv('BayesModelChecks/newcombMeasurements.csv', header=T)
 str(dfData)
 
@@ -115,7 +117,20 @@ T1_min = function(Y){
   return(min(Y))
 } 
 
+## max quantity
+T1_max = function(Y){
+  return(max(Y))
+} 
 
+## mean quantity
+T1_mean = function(Y){
+  return(mean(Y))
+} 
+
+## mChecks
+mChecks = matrix(NA, nrow=5, ncol=3)
+rownames(mChecks) = c('Variance', 'Symmetry', 'Max', 'Min', 'Mean')
+colnames(mChecks) = c('Normal', 'NormalCont', 'T')
 ########## simulate 200 test quantities
 mDraws = matrix(NA, nrow = 66, ncol=200)
 mThetas = matrix(NA, nrow=200, ncol=2)
@@ -135,7 +150,7 @@ t1 = apply(mDraws, 2, T1_var)
 par(p.old)
 hist(t1, xlab='Test Quantity - Variance', main='', breaks=50)
 abline(v = var(lData$vector), lwd=2)
-getPValue(t1, var(lData$vector))
+mChecks['Variance', 1] = getPValue(t1, var(lData$vector))
 # 0.48, the result from Figure 6.4 Gelman [2008]
 # The sample variance does not make a good test statistic because it is a sufficient statistic of
 # the model and thus, in the absence of an informative prior distribution, the posterior
@@ -148,15 +163,24 @@ t2 = sapply(seq_along(1:200), function(x) T1_symmetry(lData$vector, mThetas[x,'m
 plot(t2, t1, xlim=c(-12, 12), ylim=c(-12, 12), pch=20, xlab='Realized Value T(Yobs, Theta)',
      ylab='Test Value T(Yrep, Theta)', main='Symmetry Check')
 abline(0,1)
-getPValue(t1, t2) # we should see somewhere around 0.2 on repeated simulations
+mChecks['Symmetry', 1] = getPValue(t1, t2) # we should see somewhere around 0.2 on repeated simulations
 # The estimated p-value is 0.26, implying that any observed asymmetry in the middle of the distribution can easily be
 # explained by sampling variation. [Gelman 2008]
 
 ## testing for outlier detection i.e. the minimum value show in the histograms earlier
 t1 = apply(mDraws, 2, T1_min)
 t2 = T1_min(lData$vector)
-getPValue(t1, t2)
+mChecks['Min',1] = getPValue(t1, t2)
 
+## maximum value
+t1 = apply(mDraws, 2, T1_max)
+t2 = T1_max(lData$vector)
+mChecks['Max', 1] = getPValue(t1, t2)
+
+## mean value
+t1 = apply(mDraws, 2, T1_mean)
+t2 = T1_mean(lData$vector)
+mChecks['Mean', 1] = getPValue(t1, t2)
 # Major failures of the model, typically corresponding to extreme tail-area probabilities (less
 # than 0.01 or more than 0.99), can be addressed by expanding the model appropriately. [Gelman 2008]
 # The relevant goal is not to answer the question, ‘Do the data come from the assumed
@@ -220,7 +244,7 @@ for (i in 1:200){
 mDraws.normCont = mDraws
 ## get the p-values for the test statistics
 t1 = apply(mDraws, 2, T1_var)
-getPValue(t1, var(lData$vector))
+mChecks['Variance', 2] = getPValue(t1, var(lData$vector))
 
 ## test for symmetry
 t1 = sapply(seq_along(1:200), function(x) T1_symmetry(mDraws[,x], mThetas[x,'mu']))
@@ -228,12 +252,22 @@ t2 = sapply(seq_along(1:200), function(x) T1_symmetry(lData$vector, mThetas[x,'m
 plot(t2, t1, xlim=c(-12, 12), ylim=c(-12, 12), pch=20, xlab='Realized Value T(Yobs, Theta)',
      ylab='Test Value T(Yrep, Theta)', main='Symmetry Check')
 abline(0,1)
-getPValue(t1, t2) 
+mChecks['Symmetry', 2] = getPValue(t1, t2) 
 
 ## testing for outlier detection i.e. the minimum value show in the histograms earlier
 t1 = apply(mDraws, 2, T1_min)
 t2 = T1_min(lData$vector)
-getPValue(t1, t2)
+mChecks['Min', 2] = getPValue(t1, t2)
+
+## maximum value
+t1 = apply(mDraws, 2, T1_max)
+t2 = T1_max(lData$vector)
+mChecks['Max', 2] = getPValue(t1, t2)
+
+## mean value
+t1 = apply(mDraws, 2, T1_mean)
+t2 = T1_mean(lData$vector)
+mChecks['Mean', 2] = getPValue(t1, t2)
 
 ######################### try a third distribution, t with a low degrees of freedom
 lp3 = function(theta, data){
@@ -296,7 +330,7 @@ for (i in 1:200){
 mDraws.t = mDraws
 ## get the p-values for the test statistics
 t1 = apply(mDraws, 2, T1_var)
-getPValue(t1, var(lData$vector))
+mChecks['Variance', 3] = getPValue(t1, var(lData$vector))
 
 ## test for symmetry
 t1 = sapply(seq_along(1:200), function(x) T1_symmetry(mDraws[,x], mThetas[x,'mu']))
@@ -304,12 +338,24 @@ t2 = sapply(seq_along(1:200), function(x) T1_symmetry(lData$vector, mThetas[x,'m
 plot(t2, t1, xlim=c(-12, 12), ylim=c(-12, 12), pch=20, xlab='Realized Value T(Yobs, Theta)',
      ylab='Test Value T(Yrep, Theta)', main='Symmetry Check')
 abline(0,1)
-getPValue(t1, t2) 
+mChecks['Symmetry', 3] = getPValue(t1, t2) 
 
 ## testing for outlier detection i.e. the minimum value show in the histograms earlier
 t1 = apply(mDraws, 2, T1_min)
 t2 = T1_min(lData$vector)
-getPValue(t1, t2)
+mChecks['Min', 3] = getPValue(t1, t2)
+
+## maximum value
+t1 = apply(mDraws, 2, T1_max)
+t2 = T1_max(lData$vector)
+mChecks['Max', 3] = getPValue(t1, t2)
+
+## mean value
+t1 = apply(mDraws, 2, T1_mean)
+t2 = T1_mean(lData$vector)
+mChecks['Mean', 3] = getPValue(t1, t2)
+
+mChecks
 
 par(mfrow=c(2,2))
 hist(lData$vector, prob=T, breaks=30, xlim=c(-50, 60))
@@ -320,4 +366,3 @@ garbage = apply(mDraws.normCont, 2, function(x) lines(density(x), lwd=0.5, lty=2
 
 hist(lData$vector, prob=T, breaks=30, xlim=c(-50, 60))
 garbage = apply(mDraws.t, 2, function(x) lines(density(x), lwd=0.5, lty=2, col='darkgrey'))
-
