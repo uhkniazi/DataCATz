@@ -129,6 +129,7 @@ for (i in 1:200){
   mThetas[i,] = c(m, s)
 }
 
+mDraws.norm = mDraws
 ### get the test quantity from the test function
 t1 = apply(mDraws, 2, T1_var)
 par(p.old)
@@ -163,7 +164,7 @@ getPValue(t1, t2)
 # data and model, and assess whether they could have arisen by chance, under the model’s
 # own assumptions. [Gelman 2008]
 
-## define a second log posterior function for mixture
+## define a second log posterior function for mixture with contaminated normal distribution
 lp2 = function(theta, data){
   # we define the sigma on a log scale as optimizers work better
   # if scale parameters are well behaved
@@ -207,6 +208,7 @@ for (i in 1:200){
   p = sample(1:1000, size = 1)
   s = exp(sigSample.op[p])
   m = muSample.op[p]
+  ## this will take a sample from a contaminated normal distribution
   sam = function() {
     ind = rbinom(1, 1, 0.9)
     return(ind * rnorm(1, m, s) + (1-ind) * rnorm(1, m, s*fit2$mode['cont']))
@@ -215,5 +217,107 @@ for (i in 1:200){
   mThetas[i,] = c(m, s)
 }
 
+mDraws.normCont = mDraws
+## get the p-values for the test statistics
+t1 = apply(mDraws, 2, T1_var)
+getPValue(t1, var(lData$vector))
 
+## test for symmetry
+t1 = sapply(seq_along(1:200), function(x) T1_symmetry(mDraws[,x], mThetas[x,'mu']))
+t2 = sapply(seq_along(1:200), function(x) T1_symmetry(lData$vector, mThetas[x,'mu']))
+plot(t2, t1, xlim=c(-12, 12), ylim=c(-12, 12), pch=20, xlab='Realized Value T(Yobs, Theta)',
+     ylab='Test Value T(Yrep, Theta)', main='Symmetry Check')
+abline(0,1)
+getPValue(t1, t2) 
+
+## testing for outlier detection i.e. the minimum value show in the histograms earlier
+t1 = apply(mDraws, 2, T1_min)
+t2 = T1_min(lData$vector)
+getPValue(t1, t2)
+
+######################### try a third distribution, t with a low degrees of freedom
+lp3 = function(theta, data){
+  # function to use to use scale parameter
+  ## see here https://grollchristian.wordpress.com/2013/04/30/students-t-location-scale/
+  dt_ls = function(x, df, mu, a) 1/a * dt((x - mu)/a, df)
+  ## likelihood function
+  lf = function(dat, pred){
+    return(log(dt_ls(dat, nu, pred, sigma)))
+  }
+  nu = exp(theta['nu']) ## normality parameter for t distribution
+  sigma = exp(theta['sigma']) # scale parameter for t distribution
+  m = theta[1]
+  d = data$vector # observed data vector
+  if (exp(nu) < 1) return(-Inf)
+  log.lik = sum(lf(d, m))
+  log.prior = 1
+  log.post = log.lik + log.prior
+  return(log.post)
+}
+
+# sanity check for function
+# choose a starting value
+start = c('mu'=mean(ivTime), 'sigma'=log(sd(ivTime)), 'nu'=log(2))
+lp3(start, lData)
+
+op = optim(start, lp3, control = list(fnscale = -1), data=lData)
+op$par
+exp(op$par[2:3])
+
+## try the laplace function from LearnBayes
+fit3 = laplace(lp3, start, lData)
+fit3
+se3 = sqrt(diag(fit3$var))
+
+sigSample.op = rnorm(1000, fit3$mode['sigma'], se3['sigma'])
+nuSample = exp(rnorm(1000, fit3$mode['nu'], se3['nu']))
+# threshold the sample values to above or equal to 1
+nuSample[nuSample < 1] = 1
+
+## generate random samples from alternative t-distribution parameterization
+## see https://grollchristian.wordpress.com/2013/04/30/students-t-location-scale/
+rt_ls <- function(n, df, mu, a) rt(n,df)*a + mu
+muSample.op = rnorm(1000, mean(lData$vector), exp(sigSample.op)/sqrt(length(lData$vector)))
+
+########## simulate 200 test quantities
+mDraws = matrix(NA, nrow = 66, ncol=200)
+mThetas = matrix(NA, nrow=200, ncol=3)
+colnames(mThetas) = c('mu', 'sd', 'nu')
+
+for (i in 1:200){
+  p = sample(1:1000, size = 1)
+  s = exp(sigSample.op[p])
+  m = muSample.op[p]
+  n = nuSample[p]
+  mDraws[,i] = rt_ls(66, n, m, s)
+  mThetas[i,] = c(m, s, n)
+}
+
+mDraws.t = mDraws
+## get the p-values for the test statistics
+t1 = apply(mDraws, 2, T1_var)
+getPValue(t1, var(lData$vector))
+
+## test for symmetry
+t1 = sapply(seq_along(1:200), function(x) T1_symmetry(mDraws[,x], mThetas[x,'mu']))
+t2 = sapply(seq_along(1:200), function(x) T1_symmetry(lData$vector, mThetas[x,'mu']))
+plot(t2, t1, xlim=c(-12, 12), ylim=c(-12, 12), pch=20, xlab='Realized Value T(Yobs, Theta)',
+     ylab='Test Value T(Yrep, Theta)', main='Symmetry Check')
+abline(0,1)
+getPValue(t1, t2) 
+
+## testing for outlier detection i.e. the minimum value show in the histograms earlier
+t1 = apply(mDraws, 2, T1_min)
+t2 = T1_min(lData$vector)
+getPValue(t1, t2)
+
+par(mfrow=c(2,2))
+hist(lData$vector, prob=T, breaks=30, xlim=c(-50, 60))
+garbage = apply(mDraws.norm, 2, function(x) lines(density(x), lwd=0.5, lty=2, col='darkgrey'))
+
+hist(lData$vector, prob=T, breaks=30, xlim=c(-50, 60))
+garbage = apply(mDraws.normCont, 2, function(x) lines(density(x), lwd=0.5, lty=2, col='darkgrey'))
+
+hist(lData$vector, prob=T, breaks=30, xlim=c(-50, 60))
+garbage = apply(mDraws.t, 2, function(x) lines(density(x), lwd=0.5, lty=2, col='darkgrey'))
 
