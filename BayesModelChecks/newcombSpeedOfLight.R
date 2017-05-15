@@ -6,7 +6,7 @@
 
 library(LearnBayes)
 ## the example is taken from Simon Newcomb's experiment to measure the speed of light
-## we follow Gelman [2008] Page 67 for the analysis.
+## we follow Gelman [2013] Page 67 for the analysis.
 
 set.seed(123) # for replication
 
@@ -54,7 +54,7 @@ muSample.op = rnorm(1000, mean(lData$vector), exp(sigSample.op)/sqrt(length(lDat
 # second way of taking the sample
 muSample2.op = rnorm(1000, fit$mode['mu'], se['mu'])
 
-#### the posterior interval reported on P 67 Gelman [2008] is
+#### the posterior interval reported on P 67 Gelman [2013] is
 ## y ± 1.997s/ 66 = [23.6, 28.8]
 ## compare with our intervals
 fit$mode['mu']-1.96*se['mu']; fit$mode['mu']+1.96*se['mu']
@@ -73,7 +73,7 @@ hist(ivTime, xlab='Speed of light measurements', main='', breaks=50)
 ## observed data should look plausible under the posterior predictive distribution
 ## Draw simulated values from the joint posterior of Yrep and compare to Yobs and look for systematic differences
 
-## Gelman [2008] P 144 -
+## Gelman [2013] P 144 -
 ## sample 66 values, 20 times, each time drawing a fresh draw of sd and mean from the joint posterior
 mDraws = matrix(NA, nrow = 66, ncol=20)
 
@@ -148,10 +148,10 @@ mDraws.norm = mDraws
 ### get the test quantity from the test function
 t1 = apply(mDraws, 2, T1_var)
 par(p.old)
-hist(t1, xlab='Test Quantity - Variance', main='', breaks=50)
+hist(t1, xlab='Test Quantity - Variance (Normal Model)', main='', breaks=50)
 abline(v = var(lData$vector), lwd=2)
 mChecks['Variance', 1] = getPValue(t1, var(lData$vector))
-# 0.48, the result from Figure 6.4 Gelman [2008]
+# 0.48, the result from Figure 6.4 Gelman [2013]
 # The sample variance does not make a good test statistic because it is a sufficient statistic of
 # the model and thus, in the absence of an informative prior distribution, the posterior
 # distribution will automatically be centered near the observed value. We are not at all
@@ -161,9 +161,9 @@ mChecks['Variance', 1] = getPValue(t1, var(lData$vector))
 t1 = sapply(seq_along(1:200), function(x) T1_symmetry(mDraws[,x], mThetas[x,'mu']))
 t2 = sapply(seq_along(1:200), function(x) T1_symmetry(lData$vector, mThetas[x,'mu']))
 plot(t2, t1, xlim=c(-12, 12), ylim=c(-12, 12), pch=20, xlab='Realized Value T(Yobs, Theta)',
-     ylab='Test Value T(Yrep, Theta)', main='Symmetry Check')
+     ylab='Test Value T(Yrep, Theta)', main='Symmetry Check (Normal Model)')
 abline(0,1)
-mChecks['Symmetry', 1] = getPValue(t1, t2) # we should see somewhere around 0.2 on repeated simulations
+mChecks['Symmetry', 1] = getPValue(t1, t2) # we should see somewhere around 0.1 to 0.2 on repeated simulations
 # The estimated p-value is 0.26, implying that any observed asymmetry in the middle of the distribution can easily be
 # explained by sampling variation. [Gelman 2008]
 
@@ -250,7 +250,7 @@ mChecks['Variance', 2] = getPValue(t1, var(lData$vector))
 t1 = sapply(seq_along(1:200), function(x) T1_symmetry(mDraws[,x], mThetas[x,'mu']))
 t2 = sapply(seq_along(1:200), function(x) T1_symmetry(lData$vector, mThetas[x,'mu']))
 plot(t2, t1, xlim=c(-12, 12), ylim=c(-12, 12), pch=20, xlab='Realized Value T(Yobs, Theta)',
-     ylab='Test Value T(Yrep, Theta)', main='Symmetry Check')
+     ylab='Test Value T(Yrep, Theta)', main='Symmetry Check (Normal Contaminated)')
 abline(0,1)
 mChecks['Symmetry', 2] = getPValue(t1, t2) 
 
@@ -336,7 +336,7 @@ mChecks['Variance', 3] = getPValue(t1, var(lData$vector))
 t1 = sapply(seq_along(1:200), function(x) T1_symmetry(mDraws[,x], mThetas[x,'mu']))
 t2 = sapply(seq_along(1:200), function(x) T1_symmetry(lData$vector, mThetas[x,'mu']))
 plot(t2, t1, xlim=c(-12, 12), ylim=c(-12, 12), pch=20, xlab='Realized Value T(Yobs, Theta)',
-     ylab='Test Value T(Yrep, Theta)', main='Symmetry Check')
+     ylab='Test Value T(Yrep, Theta)', main='Symmetry Check (T Distribution)')
 abline(0,1)
 mChecks['Symmetry', 3] = getPValue(t1, t2) 
 
@@ -358,11 +358,11 @@ mChecks['Mean', 3] = getPValue(t1, t2)
 mChecks
 
 par(mfrow=c(2,2))
-hist(lData$vector, prob=T, breaks=30, xlim=c(-50, 60))
+hist(lData$vector, prob=T, breaks=30, xlim=c(-50, 60), xlab='Normal', main='')
 garbage = apply(mDraws.norm, 2, function(x) lines(density(x), lwd=0.5, lty=2, col='darkgrey'))
 
-hist(lData$vector, prob=T, breaks=30, xlim=c(-50, 60))
+hist(lData$vector, prob=T, breaks=30, xlim=c(-50, 60), xlab='Contaminated Normal', main='')
 garbage = apply(mDraws.normCont, 2, function(x) lines(density(x), lwd=0.5, lty=2, col='darkgrey'))
 
-hist(lData$vector, prob=T, breaks=30, xlim=c(-50, 60))
+hist(lData$vector, prob=T, breaks=30, xlim=c(-50, 60), xlab='T distribution', main='')
 garbage = apply(mDraws.t, 2, function(x) lines(density(x), lwd=0.5, lty=2, col='darkgrey'))
