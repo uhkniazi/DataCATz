@@ -115,6 +115,18 @@ lpd = function(beta0, beta1, sig){
   return(sum(dnorm(y, iFitted, sigma, log=T)))
 }
 
+lppd = function(beta0, beta1, sig, dat, index){
+  sigma = exp(sig)
+  x = dat$pred[index]
+  y = dat$resp[index]
+  # get the predicted or fitted value 
+  mModMatrix = model.matrix(y ~ x)
+  mCoef = matrix(c(beta0, beta1), nrow = 2, byrow = T)
+  iFitted = mModMatrix %*% mCoef # using identity link
+  ## likelihood function with posterior theta
+  return(mean(dnorm(y, iFitted, sigma, log=F)))
+}
+
 ## get a distribution of observed log predictive density
 lpdSample = sapply(1:10000, function(x) lpd(beta0Sample[x], beta1Sample[x], sigSample[x]))
 summary(lpdSample)
@@ -123,9 +135,19 @@ max(lpdSample) - mean(lpdSample)
 # between the mean and the maximum is 1.7, which is close to the value of 2/3 that would
 # be predicted from asymptotic theory, given that 3 parameters are being estimated. [Gelman 2013]
 
+## predictive error
+iAIC = (lpd(fit$mode['beta0'], fit$mode['beta1'], fit$mode['sigma']) - 3) * -2
 
-temp = sapply(1:1000, function(x) {
-  s = c('sigma'=sigSample[x], beta0Sample[x], beta1Sample[x])
-  mylogpost(s, lData)
-})
+## DIC 
+# calculate E(lpd(theta))
+eLPD = mean(sapply(1:10000, function(x) lpd(beta0Sample[x], beta1Sample[x], sigSample[x])))
+# calculate lpd(E(theta))
+pDIC = 2 *(lpd(fit$mode['beta0'], fit$mode['beta1'], fit$mode['sigma']) - eLPD)
+iDIC = (lpd(fit$mode['beta0'], fit$mode['beta1'], fit$mode['sigma']) - pDIC) * -2
 
+# calculate log POINTWISE predictive density
+ilppd = sum(log(sapply(1:15, function(x) lppd(beta0Sample, beta1Sample, sigSample, lData, x))))
+## effective numbers of parameters pWAIC1
+pWAIC1 = 2 * (ilppd - eLPD)
+
+iWAIC = -2 * (ilppd - pWAIC1)
