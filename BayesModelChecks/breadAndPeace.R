@@ -20,7 +20,7 @@ lData = list(pred=dfData$IncomeGrowth, resp=dfData$VoteShare)
 X = model.matrix(lData$resp ~ lData$pred)
 bs = solve(t(X) %*% X) %*% t(X) %*% lData$resp
 mVbetas = solve(t(X) %*% X)
-sig2 = 1/(14-2) * t(lData$resp - X %*% bs) %*% (lData$resp - X %*% bs)
+sig2 = 1/(15-2) * t(lData$resp - X %*% bs) %*% (lData$resp - X %*% bs)
 sqrt(mVbetas * as.numeric(sig2)) # compare with SE calculated using optimiser
 
 ### first get the estimates using stan and mcmc
@@ -115,11 +115,13 @@ lpd = function(beta0, beta1, sig){
   return(sum(dnorm(y, iFitted, sigma, log=T)))
 }
 
-lpdSample = apply(mStan, 1, function(x) lpd(x[1], x[2], x[3]))
-
 ## get a distribution of observed log predictive density
 lpdSample = sapply(1:10000, function(x) lpd(beta0Sample[x], beta1Sample[x], sigSample[x]))
 summary(lpdSample)
+max(lpdSample) - mean(lpdSample)
+# The mean of the posterior distribution of the log predictive density is −42.0, and the difference
+# between the mean and the maximum is 1.7, which is close to the value of 2/3 that would
+# be predicted from asymptotic theory, given that 3 parameters are being estimated. [Gelman 2013]
 
 
 temp = sapply(1:1000, function(x) {
