@@ -28,7 +28,7 @@ library(rstan)
 stanDso = rstan::stan_model(file='BayesModelChecks/breadAndPeace.stan')
 
 lStanData = list(Ntotal=nrow(X), Ncol=ncol(X), X=X, y=lData$resp)
-fit.stan = sampling(stanDso, data=lStanData, iter=10000, chains=4, pars=c('betas', 'sigma'))
+fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=4, pars=c('betas', 'sigma'))
 print(fit.stan)
 
 mStan = do.call(cbind, extract(fit.stan))[,-4]
@@ -78,7 +78,7 @@ exp(fit$mode[1])
 ## parameters for the multivariate t density
 tpar = list(m=fit$mode, var=fit$var*2, df=4)
 ## get a sample directly and using sir (sampling importance resampling with a t proposal density)
-s = sir(mylogpost, tpar, 10000, lData)
+s = sir(mylogpost, tpar, 1000, lData)
 #s = rmt(10000, fit$mode, S = fit$var)
 sigSample = s[,'sigma']
 beta0Sample = s[,'beta0']
@@ -114,11 +114,11 @@ lpd = function(beta0, beta1, sig){
   ## likelihood function with posterior theta
   return(sum(dnorm(y, iFitted, sigma, log=T)))
 }
-
-lppd = function(beta0, beta1, sig, dat, index){
+## log pointwise predictive density
+lppd = function(beta0, beta1, sig, index){
   sigma = exp(sig)
-  x = dat$pred[index]
-  y = dat$resp[index]
+  x = lData$pred[index]
+  y = lData$resp[index]
   # get the predicted or fitted value 
   mModMatrix = model.matrix(y ~ x)
   mCoef = matrix(c(beta0, beta1), nrow = 2, byrow = T)
@@ -128,7 +128,7 @@ lppd = function(beta0, beta1, sig, dat, index){
 }
 
 ## get a distribution of observed log predictive density
-lpdSample = sapply(1:10000, function(x) lpd(beta0Sample[x], beta1Sample[x], sigSample[x]))
+lpdSample = sapply(1:1000, function(x) lpd(beta0Sample[x], beta1Sample[x], sigSample[x]))
 summary(lpdSample)
 max(lpdSample) - mean(lpdSample)
 # The mean of the posterior distribution of the log predictive density is −42.0, and the difference
@@ -137,16 +137,27 @@ max(lpdSample) - mean(lpdSample)
 
 ## predictive error
 iAIC = (lpd(fit$mode['beta0'], fit$mode['beta1'], fit$mode['sigma']) - 3) * -2
+AIC(fit.lm)
 
 ## DIC 
+## pDIC are the effective number of parameters
+## 2 * [lpd(Expectation(theta)) - Expectation(lpd(Sample of thetas from posterior))]
 # calculate E(lpd(theta))
-eLPD = mean(sapply(1:10000, function(x) lpd(beta0Sample[x], beta1Sample[x], sigSample[x])))
-# calculate lpd(E(theta))
+eLPD = mean(sapply(1:1000, function(x) lpd(beta0Sample[x], beta1Sample[x], sigSample[x])))
+# calculate lpd(E(theta)) and pDIC
 pDIC = 2 *(lpd(fit$mode['beta0'], fit$mode['beta1'], fit$mode['sigma']) - eLPD)
 iDIC = (lpd(fit$mode['beta0'], fit$mode['beta1'], fit$mode['sigma']) - pDIC) * -2
+# The posterior mean of θ will produce the maximum log predictive density when it happens
+# to be the same as the mode, and negative p DIC can be produced if posterior mean is far
+# from the mode. [Gelman 2013]
 
+## WAIC
+# Two adjustments have been proposed in the literature. Both are based on pointwise
+# calculations and can be viewed as approximations to cross validation
 # calculate log POINTWISE predictive density
-ilppd = sum(log(sapply(1:15, function(x) lppd(beta0Sample, beta1Sample, sigSample, lData, x))))
+# log pointwise predictive probability of the observed data under the fitted
+# model is
+ilppd = sum(log(sapply(1:15, function(x) lppd(beta0Sample, beta1Sample, sigSample, x))))
 ## effective numbers of parameters pWAIC1
 pWAIC1 = 2 * (ilppd - eLPD)
 
