@@ -102,6 +102,9 @@ lines(density(mStan[,'beta1']))
 
 
 ############# We will calculate some model checking parameters
+## all these parameters are calculated on a deviance scale by multiplaying
+## by -2. (-2 * log predictive density). + corrections for number of parameters
+## (using AIC, DIC, WAIC). Lower values imply higher predictive accuracy
 ## first write the log predictive density function
 lpd = function(beta0, beta1, sig){
   sigma = exp(sig)
@@ -162,3 +165,38 @@ ilppd = sum(log(sapply(1:15, function(x) lppd(beta0Sample, beta1Sample, sigSampl
 pWAIC1 = 2 * (ilppd - eLPD)
 
 iWAIC = -2 * (ilppd - pWAIC1)
+
+## leave one out cross validation
+# we need to fit the model 15 times each time removing one data point
+lFits = lapply(1:15, function(x){
+  start = c('sigma' = log(sd(dfData$VoteShare[-x])), 'beta0'=0, 'beta1'=0)
+  lData = list(pred=dfData$IncomeGrowth[-x], resp=dfData$VoteShare[-x])
+  laplace(mylogpost, start, lData)
+})
+
+# lets take samples for posterior theta
+lSamples = lapply(1:15, function(x){
+  fit = lFits[[x]]
+  tpar = list(m=fit$mode, var=fit$var*2, df=4)
+  ## get a sample directly and using sir (sampling importance resampling with a t proposal density)
+  lData = list(pred=dfData$IncomeGrowth[-x], resp=dfData$VoteShare[-x])
+  s = sir(mylogpost, tpar, 200, lData)
+  return(s)
+})
+
+## calculate lppd on the hold out set
+iLppd = sapply(1:15, function(x){
+  s = lSamples[[x]]
+  log(lppd(s[,'beta0'], s[,'beta1'], s[,'sigma'], x))
+})
+iLppd = sum(iLppd)
+# calculate lppd on all data
+# calculated earlier ilppd
+# effective number of parameters
+iParamCV = ilppd - iLppd
+# Given that this model includes two linear coefficients and a variance parameter, these
+# all look like reasonable estimates of effective number of parameters. [Gelman 2013]
+# on deviance scale iCV is
+iCV = -2 * iLppd
+# after correction for number of parameters
+iCV = -2 * (iLppd - iParamCV)
