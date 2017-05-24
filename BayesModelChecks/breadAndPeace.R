@@ -135,7 +135,7 @@ lpdSample = sapply(1:1000, function(x) lpd(beta0Sample[x], beta1Sample[x], sigSa
 summary(lpdSample)
 max(lpdSample) - mean(lpdSample)
 # The mean of the posterior distribution of the log predictive density is −42.0, and the difference
-# between the mean and the maximum is 1.7, which is close to the value of 2/3 that would
+# between the mean and the maximum is 1.7, which is close to the value of 3/2 that would
 # be predicted from asymptotic theory, given that 3 parameters are being estimated. [Gelman 2013]
 
 ## predictive error
@@ -180,7 +180,7 @@ lSamples = lapply(1:15, function(x){
   tpar = list(m=fit$mode, var=fit$var*2, df=4)
   ## get a sample directly and using sir (sampling importance resampling with a t proposal density)
   lData = list(pred=dfData$IncomeGrowth[-x], resp=dfData$VoteShare[-x])
-  s = sir(mylogpost, tpar, 200, lData)
+  s = sir(mylogpost, tpar, 1000, lData)
   return(s)
 })
 
