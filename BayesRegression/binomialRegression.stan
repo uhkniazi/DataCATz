@@ -4,7 +4,7 @@ data {
     int<lower=1> NgroupMap[Ntotal]; // mapping variable to map each observation to a group 
     int<lower=1> Ncol; // total number of columns in model matrix
     matrix[Ntotal, Ncol] X; // model matrix
-    real y[Ntotal]; // response variable binomial distributed
+    int y[Ntotal]; // response variable binomial distributed
 }
 // transformed data {
 // }

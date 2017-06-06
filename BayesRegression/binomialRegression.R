@@ -94,6 +94,25 @@ fit.3 = glmer(use ~ age + I(age^2) + urban + children + (1 | district), data=Con
 summary(fit.3)
 ## ignore the convergence error
 
+############################# test with stan and compare results
+library(rstan)
+stanDso = rstan::stan_model(file='BayesRegression/binomialRegression.stan')
+
+lStanData = list(Ntotal=length(lData$resp), Nclusters=length(unique(lData$groupIndex)), 
+                 NgroupMap=lData$groupIndex, Ncol=ncol(lData$mModMatrix), X=lData$mModMatrix,
+                 y=lData$resp)
+
+fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=4, pars=c('betas', 'sigmaRan'))
+print(fit.stan)
+plot(fit.stan)
+traceplot(fit.stan, ncol=1, nrow=6, inc_warmup=F)
+stan_diag(fit.stan)
+## some sample diagnostic plots
+library(coda)
+oCoda = As.mcmc.list(fit.stan)
+xyplot(oCoda[[1]])
+autocorr.plot(oCoda[[1]])
+
 # write a new log posterior function with random effects
 myloglike.random = function(theta, data){
   ## data
@@ -132,10 +151,38 @@ start = c(sigmaRan=log(sd(lData$resp)), fit.2$mode, rep(0, times=nlevels(Contrac
 myloglike.random(start, lData)
 
 fit.4 = laplace(myloglike.random, start, lData)
+op = optim(start, myloglike.random, gr=NULL,
+           control = list(fnscale = -1, maxit=1000), method='SANN', data=lData)
+start = op$par
+### define a custom laplace function 
+library(numDeriv)
+
+mylaplace = function (logpost, mode, data) 
+{
+  options(warn = -1)
+  fit = optim(mode, logpost, gr = NULL,  
+              control = list(fnscale = -1, maxit=10000), method='CG', data=data)
+  # calculate hessian
+  fit$hessian = (hessian(logpost, fit$par, data=data))
+  colnames(fit$hessian) = names(mode)
+  rownames(fit$hessian) = names(mode)
+  options(warn = 0)
+  mode = fit$par
+  h = -solve(fit$hessian)
+  stuff = list(mode = mode, var = h, converge = fit$convergence == 
+                 0)
+  return(stuff)
+}
+
+fit.4 = mylaplace(myloglike.random, start, lData)
 
 
 
+start['mu'] = mean(extract(fit.stan)$mu)
+start['tau'] = log(mean(extract(fit.stan)$tau))
+start
 
+mylaplace(mylogpost, start, lData)
 
 
 
