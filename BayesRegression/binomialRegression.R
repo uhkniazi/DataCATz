@@ -94,6 +94,7 @@ fit.3 = glmer(use ~ age + I(age^2) + urban + children + (1 | district), data=Con
 summary(fit.3)
 ## ignore the convergence error
 
+lData$groupIndex = as.numeric(Contraception$district)
 ############################# test with stan and compare results
 library(rstan)
 stanDso = rstan::stan_model(file='BayesRegression/binomialRegression.stan')
@@ -121,8 +122,8 @@ myloglike.random = function(theta, data){
   groupIndex = data$groupIndex  ## mapping variable to map each random effect to its respective response variable
   ## parameters to track/estimate
   sigmaRan = exp(theta['sigmaRan']) # random effect scale/sd
-  betas = theta[2:(ncol(mModMatrix)+1)] # vector of betas i.e. regression coefficients for population
-  iGroupsJitter = theta[-c(1,(ncol(mModMatrix)+1))] # random effects jitters for the group deflections
+  betas = theta[grep('betas', names(theta))] # vector of betas i.e. regression coefficients for population
+  iGroupsJitter = theta[grep('ran', names(theta))]# random effects jitters for the group deflections
   
   ## random effect jitter for the population intercept
   # each group contributes a jitter centered on 0
@@ -135,33 +136,88 @@ myloglike.random = function(theta, data){
   # using logit link so use inverse logit
   iFitted = logit.inv(iFitted)
   ## first level, log priors
-  if (is.nan(sigmaRan) | sigmaRan <= 0) return(-Inf)
-  lran = sum(dnorm(iGroupsJitter, 0, sigmaRan, log=T))
-  lp = dcauchy(betas[1], 0, 10, log=T) + sum(dcauchy(betas[-1], 0, 10, log=T))
+  #if (sigmaRan <= 0) return(-Inf)
+  lhp = dunif(sigmaRan, 0, 10, log=T)
+  #lran = sum(dnorm(iGroupsJitter, 0, sigmaRan, log=T))
+  lp = sum(dnorm(iGroupsJitter, 0, sigmaRan, log=T)) + dnorm(betas[1], 0, 5, log=T) + sum(dcauchy(betas[-1], 0, 10, log=T))
   # write the likelihood function
   lik = sum(dbinom(resp, 1, iFitted, log=T))
-  val = lp + lran + lik
+  val = lhp + lp + lik
   return(val)
 }
 
-lData$groupIndex = as.numeric(Contraception$district)
+m = extract(fit.stan)
 
-start = c(sigmaRan=log(sd(lData$resp)), fit.2$mode, rep(0, times=nlevels(Contraception$district)))
-
+start = c(sigmaRan=log(mean(m$sigmaRan)), betas=apply(m$betas, 2, mean), ran=rep(0, times=length(unique(lData$groupIndex))))
+start = c(sigmaRan=log(sd(lData$resp)), betas=rep(0, times=ncol(lData$mModMatrix)), 
+          ran=rep(0, times=length(unique(lData$groupIndex))))
 myloglike.random(start, lData)
 
 fit.4 = laplace(myloglike.random, start, lData)
+
+library(numDeriv)
+library(optimx)
+
+op = optimx(start, myloglike.random, control = list(maximize=T, maxit=500, all.methods=T, usenumDeriv=T), data=lData)
+
+
+op = optimx(start, myloglike.random, control = list(maximize=T, usenumDeriv=T, maxit=500), data=lData)
+start = coef(op)[2,]
+
+
 op = optim(start, myloglike.random, gr=NULL,
            control = list(fnscale = -1, maxit=1000), method='SANN', data=lData)
 start = op$par
+
+## second version of the function
+# write a new log posterior function with random effects
+myloglike.random2 = function(theta, data){
+  ## data
+  resp = data$resp # resp
+  mModMatrix = data$mModMatrix
+  groupIndex = data$groupIndex  ## mapping variable to map each random effect to its respective response variable
+  iGroupsJitter = tapply(logit(resp), groupIndex, mean) - mean(logit(resp))
+  ## parameters to track/estimate
+  sigmaRan = exp(theta['sigmaRan']) # random effect scale/sd
+  betas = theta[grep('betas', names(theta))] # vector of betas i.e. regression coefficients for population
+  
+  ## random effect jitter for the population intercept
+  # each group contributes a jitter centered on 0
+  # population slope + random jitter
+  ivBetaRand = betas[1] + iGroupsJitter
+  # create a matrix of betas with the new interceptr/unique intercept for each random effect
+  ivIntercept = ivBetaRand[groupIndex] # expand this intercept
+  iFitted = mModMatrix[,2:ncol(mModMatrix)] %*% betas[2:ncol(mModMatrix)]
+  iFitted = as.vector(ivIntercept) + as.vector(iFitted)
+  # using logit link so use inverse logit
+  iFitted = logit.inv(iFitted)
+  ## first level, log priors
+  #if (sigmaRan <= 0) return(-Inf)
+  lhp = dunif(sigmaRan, 0, 10, log=T)
+  #lran = sum(dnorm(iGroupsJitter, 0, sigmaRan, log=T))
+  lp = sum(dnorm(iGroupsJitter, 0, sigmaRan, log=T)) + dnorm(betas[1], 0, 5, log=T) + sum(dcauchy(betas[-1], 0, 10, log=T))
+  # write the likelihood function
+  lik = sum(dbinom(resp, 1, iFitted, log=T))
+  val = lhp + lp + lik
+  return(val)
+}
+
+start = c(sigmaRan=log(mean(m$sigmaRan)), betas=apply(m$betas, 2, mean))
+start = c(sigmaRan=log(sd(lData$resp)), betas=rep(0, times=ncol(lData$mModMatrix)))
+myloglike.random2(start, lData)
+
+fit.5 = laplace(myloglike.random2, start, lData)
+
+
 ### define a custom laplace function 
-library(numDeriv)
+
+
 
 mylaplace = function (logpost, mode, data) 
 {
   options(warn = -1)
   fit = optim(mode, logpost, gr = NULL,  
-              control = list(fnscale = -1, maxit=10000), method='CG', data=data)
+              control = list(fnscale = -1, maxit=1000), method='CG', data=data)
   # calculate hessian
   fit$hessian = (hessian(logpost, fit$par, data=data))
   colnames(fit$hessian) = names(mode)
@@ -174,7 +230,7 @@ mylaplace = function (logpost, mode, data)
   return(stuff)
 }
 
-fit.4 = mylaplace(myloglike.random, start, lData)
+fit.6 = mylaplace(myloglike.random2, start, lData)
 
 
 
