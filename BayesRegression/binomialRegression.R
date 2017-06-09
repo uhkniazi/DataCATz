@@ -12,6 +12,7 @@ library(mlmRev)
 library(car)
 library(LearnBayes)
 
+p.old = par()
 data("Contraception")
 
 str(Contraception)
@@ -75,18 +76,60 @@ start = c(rep(0, times=ncol(lData$mModMatrix)))
 mylogpost(start, lData)
 
 fit.2 = laplace(mylogpost, start, lData)
+fit.2
+data.frame(coef(fit.1), fit.2$mode)
 se = sqrt(diag(fit.2$var))
+
 
 ### lets take a sample from this 
 ## parameters for the multivariate t density
 tpar = list(m=fit.2$mode, var=fit.2$var*2, df=4)
 ## get a sample directly and using sir (sampling importance resampling with a t proposal density)
-s = sir(mylogpost, tpar, 1000, lData)
+s = sir(mylogpost, tpar, 5000, lData)
 colnames(s) = colnames(lData$mModMatrix)
 apply(s, 2, mean)
 apply(s, 2, sd)
 pairs(s, pch=20)
 fit.2$sir = s
+
+library(rstan)
+stanDso = rstan::stan_model(file='BayesRegression/binomialRegression.stan')
+
+lStanData = list(Ntotal=length(lData$resp), Ncol=ncol(lData$mModMatrix), X=lData$mModMatrix,
+                 y=lData$resp)
+
+fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=4, pars=c('betas'))
+# some diagnostics for stan
+print(fit.stan, digits=3)
+plot(fit.stan)
+traceplot(fit.stan, ncol=1, nrow=6, inc_warmup=F)
+#stan_diag(fit.stan)
+## some sample diagnostic plots
+library(coda)
+oCoda = As.mcmc.list(fit.stan)
+xyplot(oCoda[[1]])
+autocorr.plot(oCoda[[1]])
+
+## how do the samples from sir and stan compare
+s1 = fit.2$sir
+s2 = extract(fit.stan)$betas
+par(mfrow=c(2,3))
+
+plot(density(s2[,1]), col=1, main='intercept')
+lines(density(s1[,1]), col=2)
+
+plot(density(s2[,2]), col=1, main='age')
+lines(density(s1[,2]), col=2)
+
+plot(density(s2[,3]), col=1, main='age^2')
+lines(density(s1[,3]), col=2)
+
+plot(density(s2[,4]), col=1, main='urbanY')
+lines(density(s1[,4]), col=2)
+
+plot(density(s2[,5]), col=1, main='childrenY')
+lines(density(s1[,5]), col=2)
+
 
 #######################################################################
 ########### lets fit a more complex random effects model
