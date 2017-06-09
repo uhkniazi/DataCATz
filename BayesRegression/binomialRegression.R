@@ -181,9 +181,9 @@ lppd = function(theta, data){
   betas = t(theta) # matrix of betas i.e. regression coefficients for population
   ## data
   resp = data$resp # resp
-  mModMatrix = data$mModMatrix
+  mModMatrix = matrix(data$mModMatrix, nrow = 1, byrow = T)
   # calculate fitted value
-  iFitted = as.vector(mModMatrix * betas)
+  iFitted = as.vector(mModMatrix %*% betas)
   # using logit link so use inverse logit
   iFitted = logit.inv(iFitted)
   ## likelihood function with posterior theta
