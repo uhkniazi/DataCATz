@@ -64,7 +64,7 @@ mylogpost = function(theta, data){
   # using logit link so use inverse logit
   iFitted = logit.inv(iFitted)
   # write the priors and likelihood 
-  lp = dcauchy(betas[1], 0, 10, log=T) + sum(dcauchy(betas[-1], 0, 10, log=T))
+  lp = dnorm(betas[1], 0, 10, log=T) + sum(dnorm(betas[-1], 0, 10, log=T))
   lik = sum(dbinom(resp, 1, iFitted, log=T))
   val = lik + lp
   return(val)
@@ -129,6 +129,78 @@ lines(density(s1[,4]), col=2)
 
 plot(density(s2[,5]), col=1, main='childrenY')
 lines(density(s1[,5]), col=2)
+
+
+### calculate model fits
+## first write the log predictive density function
+lpd = function(theta, data){
+  betas = theta # vector of betas i.e. regression coefficients for population
+  ## data
+  resp = data$resp # resp
+  mModMatrix = data$mModMatrix
+  # calculate fitted value
+  iFitted = mModMatrix %*% betas
+  # using logit link so use inverse logit
+  iFitted = logit.inv(iFitted)
+  ## likelihood function with posterior theta
+  return(sum(dbinom(resp, 1, iFitted, log=T)))
+}
+
+## averages of posterior from stan sample
+post = apply(s2, 2, mean)
+
+# AIC
+iAIC = (lpd(post, lData) - 5) * -2
+AIC(fit.1)
+
+i = sample(1:10000, size = 1000, replace = F)
+## get a distribution of observed log predictive density
+s = s2[i,]
+lpdSample = sapply(1:1000, function(x) lpd(s[x,], lData))
+summary(lpdSample)
+max(lpdSample) - mean(lpdSample)
+## 5/2 = 2.5
+# The mean of the posterior distribution of the log predictive density and the difference
+# between the mean and the maximum is close to the value of 5/2 that would
+# be predicted from asymptotic theory, given that 5 parameters are being estimated. [Gelman 2013]
+
+## calculate WAIC
+## DIC 
+## pDIC are the effective number of parameters
+## 2 * [lpd(Expectation(theta)) - Expectation(lpd(Sample of thetas from posterior))]
+# calculate E(lpd(theta))
+eLPD = mean(sapply(1:10000, function(x) lpd(s2[x,], lData)))
+# calculate lpd(E(theta)) and pDIC
+pDIC = 2 *(lpd(post, lData) - eLPD)
+iDIC = (lpd(post, lData) - pDIC) * -2
+# calculate ELPD
+
+## calculate one data point at a time
+## log pointwise predictive density
+lppd = function(theta, data){
+  betas = t(theta) # matrix of betas i.e. regression coefficients for population
+  ## data
+  resp = data$resp # resp
+  mModMatrix = data$mModMatrix
+  # calculate fitted value
+  iFitted = as.vector(mModMatrix * betas)
+  # using logit link so use inverse logit
+  iFitted = logit.inv(iFitted)
+  ## likelihood function with posterior theta
+  return(mean(dbinom(resp, 1, iFitted, log=F)))
+}
+
+ilppd = sum(log(sapply(seq_along(lData$resp), function(x) {
+  d = list(resp=lData$resp[x], mModMatrix = lData$mModMatrix[x,])
+  lppd(s2, d)
+})))
+
+## effective numbers of parameters pWAIC1
+pWAIC1 = 2 * (ilppd - eLPD)
+
+iWAIC = -2 * (ilppd - pWAIC1)
+
+
 
 
 #######################################################################
