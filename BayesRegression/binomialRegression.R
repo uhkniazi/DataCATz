@@ -212,14 +212,106 @@ summary(fit.3)
 lData$groupIndex = as.numeric(Contraception$district)
 ############################# test with stan and compare results
 library(rstan)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
 stanDso = rstan::stan_model(file='BayesRegression/binomialRegressionRandomEffects.stan')
 
 lStanData = list(Ntotal=length(lData$resp), Nclusters=length(unique(lData$groupIndex)), 
                  NgroupMap=lData$groupIndex, Ncol=ncol(lData$mModMatrix), X=lData$mModMatrix,
                  y=lData$resp)
 
-fit.stan = sampling(stanDso, data=lStanData, iter=2000, chains=4, pars=c('betas', 'sigmaRan'))
+fit.stan = sampling(stanDso, data=lStanData, iter=2000, chains=4, 
+                    pars=c('betas', 'sigmaRan', 'rGroupsJitter'), cores=3)
 print(fit.stan, digits=3)
+
+## extract the data
+s2 = extract(fit.stan) 
+colnames(s2$betas) = paste('betas', 1:ncol(s2$betas), sep='')
+colnames(s2$rGroupsJitter) =  paste('ran', 1:ncol(s2$rGroupsJitter), sep='')
+s2 = cbind(s2$sigmaRan, s2$betas, s2$rGroupsJitter)
+colnames(s2)[1] = 'sigmaRan'
+dim(s2)
+
+### calculate model fits
+## first write the log predictive density function
+lpd = function(theta, data){
+  resp = data$resp # resp
+  mModMatrix = data$mModMatrix
+  groupIndex = data$groupIndex  ## mapping variable to map each random effect to its respective response variable
+  ## parameters to track/estimate
+  sigmaRan = exp(theta['sigmaRan']) # random effect scale/sd
+  betas = theta[grep('betas', names(theta))] # vector of betas i.e. regression coefficients for population
+  iGroupsJitter = theta[grep('ran', names(theta))]# random effects jitters for the group deflections
+  
+  ## random effect jitter for the population intercept
+  # each group contributes a jitter centered on 0
+  # population slope + random jitter
+  ivBetaRand = betas[1] + iGroupsJitter
+  # create a matrix of betas with the new interceptr/unique intercept for each random effect
+  ivIntercept = ivBetaRand[groupIndex] # expand this intercept
+  iFitted = mModMatrix[,2:ncol(mModMatrix)] %*% betas[2:ncol(mModMatrix)]
+  iFitted = ivIntercept + iFitted
+  # using logit link so use inverse logit
+  iFitted = logit.inv(iFitted)
+  # write the likelihood function
+  lik = sum(dbinom(resp, 1, iFitted, log=T))
+  return(lik)
+}
+
+## averages of posterior from stan sample
+post = apply(s2, 2, mean)
+
+# AIC
+iAIC = (lpd(post, lData) - length(post)) * -2
+AIC(fit.3)
+
+## get a distribution of observed log predictive density
+lpdSample = sapply(1:nrow(s2), function(x) lpd(s2[x,], lData))
+summary(lpdSample)
+max(lpdSample) - mean(lpdSample)
+## 38.5/2 = 19.25 (38 are effective number of parameters calculated from pDIC)
+# The mean of the posterior distribution of the log predictive density and the difference
+# between the mean and the maximum is close to the value of 5/2 that would
+# be predicted from asymptotic theory, given that 5 parameters are being estimated. [Gelman 2013]
+
+## calculate WAIC and DIC
+## DIC 
+## pDIC are the effective number of parameters
+## 2 * [lpd(Expectation(theta)) - Expectation(lpd(Sample of thetas from posterior))]
+# calculate E(lpd(theta))
+eLPD = mean(sapply(1:nrow(s2), function(x) lpd(s2[x,], lData)))
+# calculate lpd(E(theta)) and pDIC
+pDIC = 2 *(lpd(post, lData) - eLPD)
+iDIC = (lpd(post, lData) - pDIC) * -2
+# calculate ELPD
+
+## calculate one data point at a time
+## log pointwise predictive density
+lppd = function(theta, data){
+  betas = t(theta) # matrix of betas i.e. regression coefficients for population
+  ## data
+  resp = data$resp # resp
+  mModMatrix = matrix(data$mModMatrix, nrow = 1, byrow = T)
+  # calculate fitted value
+  iFitted = as.vector(mModMatrix %*% betas)
+  # using logit link so use inverse logit
+  iFitted = logit.inv(iFitted)
+  ## likelihood function with posterior theta
+  return(mean(dbinom(resp, 1, iFitted, log=F)))
+}
+
+ilppd = sum(log(sapply(seq_along(lData$resp), function(x) {
+  d = list(resp=lData$resp[x], mModMatrix = lData$mModMatrix[x,])
+  lppd(s2, d)
+})))
+
+## effective numbers of parameters pWAIC1
+pWAIC1 = 2 * (ilppd - eLPD)
+
+iWAIC = -2 * (ilppd - pWAIC1)
+
+
+
 
 ####################### lets do this in R, or try to
 
