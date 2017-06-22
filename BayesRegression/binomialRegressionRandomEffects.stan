@@ -31,7 +31,8 @@ transformed parameters {
 model {
   // using non-informative priors to start with
   //sigmaRan ~ uniform(0, 1e3);
-  for(i in 1:Ncol) betas[i] ~ cauchy(0, 10);//prior for the betas
+  //for(i in 1:Ncol) betas[i] ~ cauchy(0, 10);//prior for the betas
+  betas ~ normal(0, 10);
   // random effects sample
   rGroupsJitter ~ normal(0, sigmaRan);
   
