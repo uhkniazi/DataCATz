@@ -84,12 +84,12 @@ lStanData = list(Ntotal=nrow(dfData), y=dfData$resp, iMixtures=2, Ncol=ncol(m), 
 
 ## give initial values
 initf = function(chain_id = 1) {
-  list(sigma = c(11, 11), iMixWeights=c(0.5, 0.5))
+  list(sigma = c(11, 12), iMixWeights=c(0.5, 0.5))
 } 
 
 ## give initial values function to stan
 # l = lapply(1, initf)
-fit.stan = sampling(stanDso, data=lStanData, iter=4000, chains=1, init=initf, cores=4, pars=c('sigma', 'iMixWeights', 'betasMix1',
+fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=4, init=initf, cores=4, pars=c('sigma', 'iMixWeights', 'betasMix1',
                                                                                               'betasMix2', 'mu'))
 print(fit.stan, digi=3)
 traceplot(fit.stan)
