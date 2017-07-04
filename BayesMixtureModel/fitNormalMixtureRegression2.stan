@@ -26,8 +26,8 @@ model {
   // see stan manual page 187 for an example
   real ps[iMixtures]; // temporary variable for log components
   // any priors go here 
-  mu[1] ~ normal(10, 10);
-  mu[2] ~ normal(40, 10);
+  mu[1] ~ normal(0, 2);
+  mu[2] ~ normal(31, 5);
   betasMix1 ~ cauchy(0, 10);
   betasMix2 ~ cauchy(0, 10);
   sigma ~ cauchy(0, 2.5); // weak prior

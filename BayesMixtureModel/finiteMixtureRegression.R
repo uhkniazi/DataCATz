@@ -4,48 +4,16 @@
 # Desc: Fitting a finite mixture regression model
 
 
-### generate some test data
-set.seed(201503031)
-
-## 2 intercepts
-gSigmaInt = 2
-gIntercepts = rnorm(n = 2, mean = 0, sd = gSigmaInt)
-
-# mixture probability
-iMix = c(0.6, 0.4)
-
-## error for each distribution
-gSigmaPop = c(2, 4)
-# we have 5 groups X 6 per group = 30 observations
-mErrors = matrix(c(rnorm(n = 100, mean = 0, sd = gSigmaPop[1]), 
-                   rnorm(n = 100, mean = 0, sd = gSigmaPop[2])), ncol = 2, byrow = F)
-
-## We generate some random predictor and
-## generate some data
-## predictor variable
-gPredictor = runif(n = 100, min = 0, max = 20)
-## Population slopes for each distribution.
-gSlope = c(1.5, 3)
-## Outcome
-gResponse1 = gIntercepts[1] + gSlope[1]*gPredictor + mErrors[,1]
-gResponse2 = gIntercepts[2] + gSlope[2]*gPredictor + mErrors[,2]
-gResponseAggregate = cbind(gResponse1, gResponse2)
-gResponseAggregate = sweep(gResponseAggregate, 2, iMix, '*')
-gResponseAggregate = rowSums(gResponseAggregate)
-
-dfData = data.frame(resp = gResponseAggregate, pred=gPredictor)
-
-plot(density(dfData$resp))
-lines(density(gResponse1))
-lines(density(gResponse2))
-
 library(flexmix)
+data("NPreg")
+str(NPreg)
 
-fit.flex = flexmix(resp ~ pred, data=dfData, k=2)
+fit.flex = flexmix(yn ~ x, data=NPreg, k=2)
+summary(fit.flex)
 ## fitted coefficients
 parameters(fit.flex)
 ## predicted values, both return the same values
-p = predict(fit.flex, newdata=dfData)
+p = predict(fit.flex, newdata=NPreg)
 p = do.call(cbind, p)
 f = fitted(fit.flex)
 
@@ -61,7 +29,7 @@ head(f)
 #   z <- lapply(x, function(z) matrix(rowSums(do.call("cbind", z) * prior_weights), nrow = nrow(z[[1]])))
 # }
 ## lets check
-p2 = predict(fit.flex, newdata=dfData, aggregate=T)
+p2 = predict(fit.flex, newdata=NPreg, aggregate=T)
 p2 = do.call(cbind, p2)
 head(p2)
 
@@ -73,34 +41,76 @@ p.agg = rowSums(p.agg)
 head(p.agg)
 identical(as.numeric(p.agg), as.numeric(p2))
 
+
+plot(density(NPreg$yn))
 ############### fit a similar model using stan and MCMC approach
 library(rstan)
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
 stanDso = rstan::stan_model(file='BayesMixtureModel/fitNormalMixtureRegression.stan')
-m = model.matrix(resp ~ pred, data=dfData)
+m = model.matrix(yn ~ x, data=NPreg)
 ## prepare data
-lStanData = list(Ntotal=nrow(dfData), y=dfData$resp, iMixtures=2, Ncol=ncol(m), X=m)
+lStanData = list(Ntotal=nrow(NPreg), y=NPreg$yn, iMixtures=2, Ncol=ncol(m), X=m)
 
 ## give initial values
 initf = function(chain_id = 1) {
-  list(sigma = c(11, 12), iMixWeights=c(0.5, 0.5))
+  list(sigma = c(10, 10), iMixWeights=c(0.5, 0.5))
 } 
 
 ## give initial values function to stan
 # l = lapply(1, initf)
-fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=4, init=initf, cores=4, pars=c('sigma', 'iMixWeights', 'betasMix1',
+fit.stan = sampling(stanDso, data=lStanData, iter=4000, chains=1, init=initf, cores=4, pars=c('sigma', 'iMixWeights', 'betasMix1',
                                                                                               'betasMix2', 'mu'))
 print(fit.stan, digi=3)
 traceplot(fit.stan)
+parameters(fit.flex)
 
-## calculate fitted values
-m = extract(fit.stan)
+### fit a second model with more restrictive priors 
+stanDso2 = rstan::stan_model(file='BayesMixtureModel/fitNormalMixtureRegression2.stan')
+m = model.matrix(yn ~ x, data=NPreg)
+## prepare data
+lStanData = list(Ntotal=nrow(NPreg), y=NPreg$yn, iMixtures=2, Ncol=ncol(m), X=m)
 
-mBetas.Comp1 = m$betas[,,1]
-mBetas.Comp2 = m$betas[,,2]
+## give initial values
+initf = function(chain_id = 1) {
+  list(sigma = c(10, 10), iMixWeights=c(0.5, 0.5), mu=c(0, 35))
+} 
 
-f1 = lStanData$X %*% colMeans(mBetas.Comp1)
-f2 = lStanData$X %*% colMeans(mBetas.Comp2)
+## give initial values function to stan
+# l = lapply(1, initf)
+fit.stan2 = sampling(stanDso2, data=lStanData, iter=10000, chains=1, init=initf, cores=4, pars=c('sigma', 'iMixWeights', 'betasMix1',
+                                                                                              'betasMix2', 'mu'))
+print(fit.stan2)
+
+## get fitted values
+m = extract(fit.stan2)
+names(m)
+intercepts = apply(m$mu, 2, mean)
+betas = c(mean(m$betasMix1), mean(m$betasMix2))
+iMixWeights = c(0.44, 0.56)
+
+iPred1 = lStanData$X %*% c(intercepts[1], betas[1])
+iPred2 = lStanData$X %*% c(intercepts[2], betas[2])
+
+## compare with fit.flex
+head(f)
+head(iPred1)
+head(iPred2)
+
+## get aggregate
+iAggregate = cbind(iPred1, iPred2)
+iAggregate = sweep(iAggregate, 2, iMixWeights, '*')
+iAggregate = rowSums(iAggregate)
+
+head(data.frame(iAggregate, p.agg))
+
+dfPredicted = data.frame(iAggregate, p.agg)
+
+## calculate MSE
+mean((NPreg$yn - dfPredicted$p.agg)^2)
+mean((NPreg$yn - dfPredicted$iAggregate)^2)
+
+## both pretty close
+
 
 

@@ -7,6 +7,8 @@
 
 # Example code in package build process
 *-Ex.R
+*.rds
+*.Rproj
 
 # Output files from R CMD build
 /*.tar.gz
