@@ -25,7 +25,7 @@ transformed parameters { // calculated parameters
 model {
   // see stan manual page 187 for an example
   real ps[iMixtures]; // temporary variable for log components
-  // any priors go here 
+  // any priors go here, get some information from ones we fit earlier
   mu[1] ~ normal(10, 10);
   mu[2] ~ normal(40, 10);
   betasMix1 ~ cauchy(0, 10);
