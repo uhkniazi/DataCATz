@@ -9,36 +9,25 @@ data {
 parameters { // the parameters to track
     real<lower=0> sigma[iMixtures]; // scale parameters for normal distribution  
     simplex[iMixtures] iMixWeights; // weights for the number of mixtures (should sum to one)
-    vector[Ncol] betasMix1; // regression parameters for each mixture component
-    vector[Ncol] betasMix2; // regression parameters for each mixture component
+    matrix[Ncol, iMixtures] betas; // regression parameters for each mixture component
   }
 transformed parameters { // calculated parameters 
-    ordered[iMixtures] mu; // ordered intercept
-    vector[Ntotal] muMix1; // number of fitted values
-    vector[Ntotal] muMix2; // number of fitted values
-    matrix[Ntotal, (Ncol-1)] mX2; // new model matrix without intercept
-    mX2 = X[,2:Ncol]; 
-    // calculate fitted values without intercept
-    muMix1 = mX2 * betasMix1[2:Ncol];
-    muMix2 = mX2 * betasMix2[2:Ncol];
-    mu[1] = betasMix1[1];
-    mu[2] = betasMix2[1];
-    
+    matrix[Ntotal, Ncol] mu; // number of fitted values
+    mu = X * betas;
 }
 model {
   // see stan manual page 187 for an example
   real ps[iMixtures]; // temporary variable for log components
   // any priors go here 
   //mu ~ normal(100, 12);
-  betasMix1 ~ cauchy(0, 10);
-  betasMix2 ~ cauchy(0, 10);
   sigma ~ cauchy(0, 2.5); // weak prior
   iMixWeights ~ dirichlet(rep_vector(2.0, iMixtures));
   // loop to calculate likelihood
   for(n in 1:Ntotal){
     // second loop for number of mixture components
-    ps[1] = log(iMixWeights[1]) + normal_lpdf(y[n] | mu[1]+muMix1[n], sigma[1]);
-    ps[2] = log(iMixWeights[2]) + normal_lpdf(y[n] | mu[2]+muMix2[n], sigma[2]);
+    for (k in 1:iMixtures){
+      ps[k] = log(iMixWeights[k]) + normal_lpdf(y[n] | mu[,k], sigma[k]);
+    }
     target += log_sum_exp(ps);
   }
 }
