@@ -40,5 +40,33 @@ p.agg = rowSums(p.agg)
 head(p.agg)
 identical(as.numeric(p.agg), as.numeric(p2))
 
+############### fit a similar model using stan and MCMC approach
+library(rstan)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+stanDso = rstan::stan_model(file='BayesMixtureModel/fitNormalMixtureRegression.stan')
+m = model.matrix(yn ~ x, data=NPreg)
+## prepare data
+lStanData = list(Ntotal=nrow(NPreg), y=NPreg$yn, iMixtures=2, Ncol=ncol(m), X=m)
+
+## give initial values
+initf = function(chain_id = 1) {
+  list(sigma = c(12, 12), iMixWeights=c(0.5, 0.5))
+} 
+
+## give initial values function to stan
+# l = lapply(1, initf)
+fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=4, init=initf, cores=4, pars=c('sigma', 'iMixWeights', 'betas'))
+print(fit.stan, digi=3)
+traceplot(fit.stan)
+
+## calculate fitted values
+m = extract(fit.stan)
+
+mBetas.Comp1 = m$betas[,,1]
+mBetas.Comp2 = m$betas[,,2]
+
+f1 = lStanData$X %*% colMeans(mBetas.Comp1)
+f2 = lStanData$X %*% colMeans(mBetas.Comp2)
 
 
