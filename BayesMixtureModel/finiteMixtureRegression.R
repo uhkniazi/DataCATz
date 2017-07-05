@@ -9,7 +9,9 @@ data("NPreg")
 str(NPreg)
 
 ### how is the response variable distributed
-plot(density(NPreg$yn))
+yresp = density(NPreg$yn)
+yresp$y = yresp$y/max(yresp$y)
+plot(yresp, xlab='', main='Response variable', ylab='scaled density')
 ########### this part of the script is looking at if the mixture model is appropriate
 ############################### fit a model using stan to estimate mixture parameters
 library(rstan)
@@ -75,8 +77,12 @@ for (i in 1:200){
 
 mDraws.normMix = mDraws
 
-plot(density(NPreg$yn))
-temp = apply(mDraws, 2, function(x) lines(density(x), col=2))
+plot(yresp, xlab='', main='Fitted distribution', ylab='scaled density', lwd=2)
+temp = apply(mDraws, 2, function(x) {x = density(x)
+x$y = x$y/max(x$y)
+lines(x, col='darkgrey', lwd=0.6)
+})
+lines(yresp, lwd=2)
 
 ## perform some checks
 ## calculate bayesian p-value for this test statistic
@@ -108,20 +114,25 @@ T1_mean = function(Y){
   return(mean(Y))
 } 
 
+
 t1 = apply(mDraws, 2, T1_var)
-getPValue(t1, var(lStanData$y))
+ivTestQuantities = getPValue(t1, var(lStanData$y))
 
 t1 = apply(mDraws, 2, T1_min)
 t2 = T1_min(lStanData$y)
-getPValue(t1, t2)
+ivTestQuantities = c(ivTestQuantities, getPValue(t1, t2))
 
 t1 = apply(mDraws, 2, T1_max)
 t2 = T1_max(lStanData$y)
-getPValue(t1, t2)
+ivTestQuantities = c(ivTestQuantities, getPValue(t1, t2))
 
 t1 = apply(mDraws, 2, T1_mean)
 t2 = T1_mean(lStanData$y)
-getPValue(t1, t2)
+ivTestQuantities = c(ivTestQuantities, getPValue(t1, t2))
+
+names(ivTestQuantities) = c('variance', 'minimum', 'maximum', 'mean')
+
+ivTestQuantities
 
 ## the mixture model with 2 components appears to be appropriate, lets start fitting
 ###################################################################################
@@ -160,7 +171,7 @@ head(p.agg)
 identical(as.numeric(p.agg), as.numeric(p2))
 
 
-plot(density(NPreg$yn))
+#plot(density(NPreg$yn))
 ############### fit a similar model using stan and MCMC approach
 library(rstan)
 rstan_options(auto_write = TRUE)
@@ -212,8 +223,7 @@ iPred2 = lStanData$X %*% c(intercepts[2], betas[2])
 
 ## compare with fit.flex
 head(f)
-head(iPred1)
-head(iPred2)
+head(cbind(iPred1, iPred2))
 
 ## get aggregate
 iAggregate = cbind(iPred1, iPred2)
@@ -222,12 +232,11 @@ iAggregate = rowSums(iAggregate)
 
 head(data.frame(iAggregate, p.agg))
 
-dfPredicted = data.frame(iAggregate, p.agg)
+dfPredicted = data.frame(stan=iAggregate, flexmix=p.agg)
 
 ## calculate MSE
-mean((NPreg$yn - dfPredicted$p.agg)^2)
-mean((NPreg$yn - dfPredicted$iAggregate)^2)
-
+mean((dfPredicted$flexmix - NPreg$yn)^2)
+mean((dfPredicted$stan - NPreg$yn)^2)
 ## both pretty close
 
 
