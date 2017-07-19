@@ -5,14 +5,14 @@
 
 
 ### define three machines
-## model m1 - machine makes 1/6 defective at the most
-m1 = function(theta) ifelse(theta >=0.17, -Inf, dunif(theta, 0, 0.17, log=T))
+## model m1 - machine makes less defective widgets
+m1 = function(th) dbeta(th, 1, 5, log = T)
 
-## model m2 - machine makes between 0.99 and 0.33 defective 
-m2 = function(theta) ifelse(theta >=0.99, -Inf, dunif(theta, 0.17, 0.99, log=T))
+## model m2 - machine makes between average defective widgets
+m2 = function(th) dbeta(th, 5, 5, log = T)
 
 ## model m3 - machine makes almost everything bad
-m3 = function(theta) ifelse(theta < 0.99, -Inf, dunif(theta, 0.98, 1, log=T))
+m3 = function(th) dbeta(th, 5, 1, log = T)
 
 ## define an array that represents number of models in our parameter space
 ## each index has a prior weight/probability of being selected
@@ -25,11 +25,11 @@ g.mix = function(theta) {
     mix.prior['m3']*exp(m3(theta)))}
 
 ## some plots to look at the shapes of the priors
-p.old = par(mfrow=c(2,1))
-curve(g1, 0, 1, main='Model m1')
-curve(g2, 0, 1, main='Model m2')
+curve(m1, 0, 1, main='machine 1')
+curve(m2, 0, 1, main='machine 2')
+curve(m3, 0, 1, main='machine 3')
 par(p.old)
-curve(g.mix, 0, 1, main='Joint Prior Mixture of 2 models')
+curve(g.mix, 0, 1, main='Joint Prior Mixture of 3 models')
 
 # we observe data from a machine, how many bad do we see
 data = rbinom(20, 1, 1/6)
@@ -101,20 +101,27 @@ start = c(theta=logit(99/100))
 mylogpost_m3(start, data)
 fit_m3 = laplace(mylogpost_m3, start, data)
 
-fit_m2 = laplace(mylogpost_m2, start, data)
-
-fit_m1
-fit_m2
-
 # values for theta for each model
 logit.inv(fit_m1$mode)
 logit.inv(fit_m2$mode)
-
+logit.inv(fit_m3$mode)
 # approximate posterior predictive distribution
 exp(fit_m1$int)
 exp(fit_m2$int)
+exp(fit_m3$int)
 
-BF2 = exp(fit_m1$int) / exp(fit_m2$int)
+BFm1 = exp(fit_m1$int) / exp(fit_m2$int)
+BFm3 = exp(fit_m3$int) / exp(fit_m2$int)
 
-# posterior prob for the model 1
-exp(fit_m1$int) * mix.prior[1] / (exp(fit_m1$int) * mix.prior[1] + exp(fit_m2$int) * mix.prior[2])
+# posterior prob for the models
+mix.post = c(m1=0, m2=0, m3=0)
+mix.post[1] = exp(fit_m1$int) * mix.prior[1] / (exp(fit_m1$int) * mix.prior[1] + exp(fit_m2$int) * mix.prior[2]
+                                                + exp(fit_m3$int) * mix.prior[3])
+
+mix.post[2] = exp(fit_m2$int) * mix.prior[2] / (exp(fit_m1$int) * mix.prior[1] + exp(fit_m2$int) * mix.prior[2]
+                                                + exp(fit_m3$int) * mix.prior[3])
+
+mix.post[3] = exp(fit_m3$int) * mix.prior[3] / (exp(fit_m1$int) * mix.prior[1] + exp(fit_m2$int) * mix.prior[2]
+                                                + exp(fit_m3$int) * mix.prior[3])
+
+mix.post
