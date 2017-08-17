@@ -59,6 +59,56 @@ acos(0.1414213)
 ## convert it to degrees
 rad2deg(1.428899)
 
+### input output operations, functions, vectors and matrices
+## some operations or functions
+op1 = function(x, y, z){
+  return(3*x + 4*y + 5*z)
+}
+
+op2 = function(x, y, z){
+  return(3*x + 0*y + 0*z)
+}
+
+op3 = function(x, y, z){
+  return(4*x + (-3)*y + 2*z)
+}
+
+
+## some vector inputs
+inp1 = c(5, 10, 12)
+inp2 = c(4, 6, -2)
+inp3 = c(8, -5, 4)
+
+## perform operation on input
+op1(inp1[1], inp1[2], inp1[3])
+op2(inp2[1], inp2[2], inp2[3])
+op3(inp3[1], inp3[2], inp3[3])
+
+## create input matrix
+mInputs = cbind(inp1, inp2, inp3)
+
+## operations matrix
+mOperations = rbind(c(3, 4, 5),
+                    c(3, 0, 0),
+                    c(4, -3, 2))
+
+## matrix multiplication
+## operations %*% inputs
+mOutput = mOperations %*% mInputs
+## resultant matrix = rows=size of operation (2) and cols=number of inputs (2)
+mOutput
+
+## what is the determinant of the matrix
+det(mOperations)
+## get inverse of the matrix
+mOperations.inv = solve(mOperations)
+## retrieve original input
+mOperations.inv %*% mOutput
+
+
+
+
+
 
 
 
