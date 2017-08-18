@@ -95,7 +95,7 @@ mOperations = rbind(c(3, 4, 5),
 ## matrix multiplication
 ## operations %*% inputs
 mOutput = mOperations %*% mInputs
-## resultant matrix = rows=size of operation (2) and cols=number of inputs (2)
+## resultant matrix = rows=size of operation (3) and cols=number of inputs (3)
 mOutput
 
 ## what is the determinant of the matrix
@@ -104,6 +104,37 @@ det(mOperations)
 mOperations.inv = solve(mOperations)
 ## retrieve original input
 mOperations.inv %*% mOutput
+
+### eigen vectors 
+## a matrix representing a square with 4 points in x, y coordinates 
+mOriginal = cbind(c(0,0), c(1,0), c(1,1), c(0,1))
+
+## transformation or operation to be performed
+mTransform = cbind(c(3, 0), c(0, 2))
+## after transformation
+mChanged = mTransform %*% mOriginal
+## eigen vectors and values of the transformation matrix
+eigen(mTransform)
+
+plot.new()
+plot.window(c(-1,4), c(-1, 4))
+rect(xleft = 0, ybottom = 0, ytop = 2, xright = 3, border='red')
+rect(xleft = 0, ybottom = 0, ytop = 1, xright = 1, col='grey'  )
+arrows(0, 0, 3, 0, length = 0.1, lwd=2, col=2)
+arrows(0, 0, 0, 2, length = 0.1, lwd=2, col=2)
+arrows(0, 0, 0, 1, length = 0.1, lwd=2)
+arrows(0, 0, 1, 0, length = 0.1, lwd=2)
+
+mTransform %*% mOriginal
+
+det(mOriginal)
+eigen(mOriginal)
+
+## scale the matrix 
+mScaled = rbind(c(3, 0), c(0, 2))
+det(mScaled)
+eigen(mScaled)
+
 
 
 
