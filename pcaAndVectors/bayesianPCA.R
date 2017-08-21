@@ -50,6 +50,65 @@ pr.out$x
 ######### lets try a bayesian approach
 library(LearnBayes)
 
+# log posterior function
+mylogpost = function(theta, data){
+  ## parameters to track/estimate and data
+  mResp = data$resp
+  # fix parameters in initial model
+  mEigens = eigen(cov(mResp))$vectors
+  ivMu = colMeans(mResp)
+  mSigma = cov(mResp)
+  # parameter to track
+  mData.rot = rbind(X=theta[grep('X', names(theta))], Y=theta[grep('Y', names(theta))]) 
+  
+  # calculate fitted value
+  mFitted = mEigens %*% mData.rot
+  mFitted = sweep(mFitted, 1, ivMu, '+')
+  mFitted = t(mFitted)
+  # write the priors and likelihood 
+  lp = sum(dmnorm(t(mData.rot), mean = c(0, 0), diag(1, 2, 2), log=T))
+  lik = sum(sapply(1:nrow(mResp), function(x) dmnorm(mResp[x,], mFitted[x,], mSigma, log=T)))
+  val = lik + lp
+  return(val)
+}
+
+lData = list(resp=mData)
+start = c(X=rnorm(10, 0, 1), Y=rnorm(10, 0, 1))
+
+mylogpost(start, lData)
+fit.lap = laplace(mylogpost, start, lData)
+tpar = list(m=fit.lap$mode, var=fit.lap$var*2, df=3)
+s = sir(mylogpost, tpar, 1000, lData)
+
+library(numDeriv)
+mylaplace = function (logpost, mode, data) 
+{
+  options(warn = -1)
+  fit = optim(mode, logpost, gr = NULL,  
+              control = list(fnscale = -1, maxit=10000), data=data)
+  # calculate hessian
+  fit$hessian = (hessian(logpost, fit$par, data=data))
+  colnames(fit$hessian) = names(mode)
+  rownames(fit$hessian) = names(mode)
+  options(warn = 0)
+  mode = fit$par
+  h = -solve(fit$hessian)
+  stuff = list(mode = mode, var = h, converge = fit$convergence == 
+                 0)
+  return(stuff)
+}
+
+fit.lap = mylaplace(mylogpost, start, lData)
+
+
+
+
+
+
+
+
+
+
 
 ## lets write a custom glm using a bayesian approach
 lData = list(resp = mData)
