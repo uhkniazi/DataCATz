@@ -53,27 +53,28 @@ library(LearnBayes)
 # log posterior function
 mylogpost = function(theta, data){
   ## parameters to track/estimate and data
+  # data
   mResp = data$resp
   # fix parameters in initial model
   mEigens = eigen(cov(mResp))$vectors
   ivMu = colMeans(mResp)
-  mSigma = cov(mResp)
   # parameter to track
   mData.rot = rbind(X=theta[grep('X', names(theta))], Y=theta[grep('Y', names(theta))]) 
+  iSigma = exp(theta[grep('iSigma', names(theta))])
   
   # calculate fitted value
   mFitted = mEigens %*% mData.rot
   mFitted = sweep(mFitted, 1, ivMu, '+')
   mFitted = t(mFitted)
   # write the priors and likelihood 
-  lp = sum(dmnorm(t(mData.rot), mean = c(0, 0), diag(1, 2, 2), log=T))
-  lik = sum(sapply(1:nrow(mResp), function(x) dmnorm(mResp[x,], mFitted[x,], mSigma, log=T)))
+  lp = sum(dmnorm(t(mData.rot), mean = c(0, 0), diag(1, 2, 2), log=T)) + dunif(iSigma, 0.5, 100, log=T)
+  lik = sum(sapply(1:nrow(mResp), function(x) sum(dnorm(mResp[x,], mFitted[x,], iSigma, log=T))))
   val = lik + lp
   return(val)
 }
 
 lData = list(resp=mData)
-start = c(X=rnorm(10, 0, 1), Y=rnorm(10, 0, 1))
+start = c(X=rnorm(10, 0, 1), Y=rnorm(10, 0, 1), iSigma=log(1))
 
 mylogpost(start, lData)
 fit.lap = laplace(mylogpost, start, lData)
