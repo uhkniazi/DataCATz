@@ -48,6 +48,24 @@ pr.out$rotation
 pr.out$x
 
 ######### lets try a bayesian approach
+### first get the estimates using stan and mcmc
+library(rstan)
+stanDso = rstan::stan_model(file='pcaAndVectors/bayesianPCA.stan')
+
+lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=ncol(mData),
+                 y=t(mData))
+fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=4)
+print(fit.stan)
+
+mStan = do.call(cbind, extract(fit.stan))
+colnames(mStan) = c('beta0', 'beta1', 'sigma')
+apply(mStan, 2, mean)
+apply(mStan, 2, sd)
+
+
+
+
+
 library(LearnBayes)
 
 # log posterior function
