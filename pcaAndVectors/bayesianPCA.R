@@ -5,21 +5,29 @@
 
 
 ## sample data
-mData = cbind(c(2.5,0.5,2.2,1.9,3.1,2.3,2,1,1.5,1.1),
-              c(2.4,0.7,2.9,2.2,3.0,2.7,1.6,1.1,1.6,0.9))
-colnames(mData) = c('X', 'Y')
+# mData = cbind(c(2.5,0.5,2.2,1.9,3.1,2.3,2,1,1.5,1.1),
+#               c(2.4,0.7,2.9,2.2,3.0,2.7,1.6,1.1,1.6,0.9))
+# colnames(mData) = c('X', 'Y')
 
+data("faithful")
+mData = as.matrix(faithful)
+ 
+## structure of the data
+str(mData)
+
+plot(mData, pch=20)
+## now standardize the data with 0 mean and variance 1
+plot(scale(mData), pch=20)
+
+## now perform PCA and data whitening
 ivMeans = colMeans(mData)
 # centered data
-mData.s = sweep(mData, 1, ivMeans, '-')
+mData.s = sweep(mData, 2, ivMeans, '-')
 
 # covariance matrix for the data
 mCov = cov(mData)
 lEigens = eigen(mCov)
 colnames(lEigens$vectors) = c('Vector1', 'Vector2')
-
-# # multiply by -1 to keep it same as example
-# lEigens$vectors = lEigens$vectors * -1
 
 ## inputs are the variables i.e. the data, one column at a time
 t(mData.s)
@@ -28,8 +36,10 @@ t(lEigens$vectors)
 
 ## get the transformed points after running them through the matrix
 mData.rotated = t(lEigens$vectors) %*% t(mData.s)
-rownames(mData.rotated) = c('newX', 'newY')
+rownames(mData.rotated) = c('Comp1', 'Comp2')
 mData.rotated
+
+plot(t(mData.rotated), main='Whitened')
 
 ## get the original data back
 ## rowDataMatrix = (inverse(rowEigenVectors) * rotated Data) + original Means
@@ -38,7 +48,7 @@ mData.original.s = (solve(t(lEigens$vectors)) %*% mData.rotated)
 mData.original.s
 
 ## add the mean to un-center the data
-mData.original = sweep(mData.original.s, 2, ivMeans, '+')
+mData.original = sweep(mData.original.s, 1, ivMeans, '+')
 t(mData)
 
 # perform PCA using the prcomp
@@ -46,6 +56,9 @@ t(mData)
 pr.out = prcomp(mData, scale=F, center = T)
 pr.out$rotation
 pr.out$x
+plot(pr.out$x)
+pr.out = prcomp(scale(mData), scale=F, center = F)
+plot(pr.out$x)
 
 ######### lets try a bayesian approach
 ### first get the estimates using stan and mcmc
@@ -54,8 +67,17 @@ stanDso = rstan::stan_model(file='pcaAndVectors/bayesianPCA.stan')
 
 lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=ncol(mData),
                  y=t(mData))
-fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=4)
+fit.stan = sampling(stanDso, data=lStanData, iter=10000, chains=2)
 print(fit.stan)
+
+lResults = extract(fit.stan)
+mComp = lResults$mComponents
+mComp.1 = mComp[,,1]
+ivComp.1 = colMeans(mComp.1)
+mComp.2 = mComp[,,2]
+ivComp.2 = colMeans(mComp.2)
+
+plot(ivComp.1, ivComp.2)
 
 mStan = do.call(cbind, extract(fit.stan))
 colnames(mStan) = c('beta0', 'beta1', 'sigma')
@@ -85,14 +107,15 @@ mylogpost = function(theta, data){
   mFitted = sweep(mFitted, 1, ivMu, '+')
   mFitted = t(mFitted)
   # write the priors and likelihood 
-  lp = sum(dmnorm(t(mData.rot), mean = c(0, 0), diag(1, 2, 2), log=T)) + dunif(iSigma, 0.5, 100, log=T)
+  lp1 = sum(apply(mData.rot, 2, function(x) dmnorm(x, mean = c(0, 0), diag(1, 2, 2), log=T)))
+  lp2 = lp1 + dcauchy(iSigma, 0, 2.5, log=T)
   lik = sum(sapply(1:nrow(mResp), function(x) sum(dnorm(mResp[x,], mFitted[x,], iSigma, log=T))))
-  val = lik + lp
+  val = lik + lp2
   return(val)
 }
 
 lData = list(resp=mData)
-start = c(X=rnorm(10, 0, 1), Y=rnorm(10, 0, 1), iSigma=log(1))
+start = c(X=rnorm(nrow(mData), 0, 1), Y=rnorm(nrow(mData), 0, 1), iSigma=log(1))
 
 mylogpost(start, lData)
 fit.lap = laplace(mylogpost, start, lData)
