@@ -2,7 +2,7 @@ data {
   int<lower=1> Ntotal; // number of observations
   int<lower=1> Nvars; // number of variables/vectors in data matrix
   int<lower=1> Neigens; // number of eigen vectors to use
-  matrix[Nvars, Ntotal] y; // data matrix where each vector is in row format
+  matrix[Ntotal, Nvars] y; // data matrix where each vector is in column format
 }
 
 transformed data {
@@ -20,7 +20,7 @@ parameters { // the parameters to track
   matrix[Nvars, Neigens] mEigens; // note it is the transformation matrix 
   vector[Nvars] mu; // vector of means added to the centered rotated components 
   real<lower=0> sigma; // scale parameter for likelihood function
-  vector[Neigens] mComponents[Ntotal]; // matrix for the rotated data in row vector format
+  vector[Neigens] mComponents[Ntotal]; // vector with Ntotal components for the rotated data with dimensions NTotal, Neigens
 }
 
 model {
@@ -36,6 +36,6 @@ model {
   // Eigens X Rotations + Centering
   // i.e. Operations X Inputs
   for (i in 1:Ntotal){
-    y[,i] ~ normal( mEigens * mComponents[i] + mu , sigma);
+    y[i,] ~ normal( mEigens * mComponents[i] + mu , sigma);
   }
 }

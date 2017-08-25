@@ -15,41 +15,58 @@ mData = as.matrix(faithful)
 ## structure of the data
 str(mData)
 
-plot(mData, pch=20)
+
+p.old = par(mfrow=c(2,2))
+plot(mData, pch=20, main='raw')
 ## now standardize the data with 0 mean and variance 1
-plot(scale(mData), pch=20)
+plot(scale(mData), pch=20, main='Scaled and Centered')
 
 ## now perform PCA and data whitening
 ivMeans = colMeans(mData)
 # centered data
 mData.s = sweep(mData, 2, ivMeans, '-')
 
-# covariance matrix for the data
+# covariance matrix for the data without scaling
 mCov = cov(mData)
 lEigens = eigen(mCov)
 colnames(lEigens$vectors) = c('Vector1', 'Vector2')
 
 ## inputs are the variables i.e. the data, one column at a time
-t(mData.s)
+t(mData.s)[,1:6]
 ## operations/transformation matrix is the matrix of eigen vectors
 t(lEigens$vectors)
 
-## get the transformed points after running them through the matrix
+## get the transformed points after running them through the matrix, i.e. input output system
 mData.rotated = t(lEigens$vectors) %*% t(mData.s)
 rownames(mData.rotated) = c('Comp1', 'Comp2')
-mData.rotated
+mData.rotated[,1:6]
 
-plot(t(mData.rotated), main='Whitened')
+plot(t(mData.rotated), main='Centered and decorrelated', pch=20)
 
 ## get the original data back
 ## rowDataMatrix = (inverse(rowEigenVectors) * rotated Data) + original Means
 solve(t(lEigens$vectors)) ## this equals the transpose of the rowEigenVectors matrix
 mData.original.s = (solve(t(lEigens$vectors)) %*% mData.rotated)
-mData.original.s
+mData.original.s[,1:6]
 
 ## add the mean to un-center the data
 mData.original = sweep(mData.original.s, 1, ivMeans, '+')
-t(mData)
+mData.original[,1:6]
+t(mData)[,1:6]
+
+## repeat but with scaling and centring as well
+mData.s = scale(mData)
+mCov = cov(mData.s)
+lEigens = eigen(mCov)
+colnames(lEigens$vectors) = c('Vector1', 'Vector2')
+
+## get the transformed points after running them through the matrix, i.e. input output system
+mData.rotated = t(lEigens$vectors) %*% t(mData.s)
+rownames(mData.rotated) = c('Comp1', 'Comp2')
+mData.rotated[,1:6]
+
+plot(t(mData.rotated), main='Centered, Scaled and decorrelated - Whitening', pch=20)
+par(p.old)
 
 # perform PCA using the prcomp
 # the vectors are in columns
@@ -57,17 +74,29 @@ pr.out = prcomp(mData, scale=F, center = T)
 pr.out$rotation
 pr.out$x
 plot(pr.out$x)
-pr.out = prcomp(scale(mData), scale=F, center = F)
+pr.out = prcomp(mData, scale=T, center = T)
 plot(pr.out$x)
 
 ######### lets try a bayesian approach
 ### first get the estimates using stan and mcmc
 library(rstan)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+
 stanDso = rstan::stan_model(file='pcaAndVectors/bayesianPCA.stan')
 
-lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=ncol(mData),
-                 y=t(mData))
-fit.stan = sampling(stanDso, data=lStanData, iter=10000, chains=2)
+## set initial values
+## give initial values if you want, look at the density plot 
+mData.s = scale(mData)
+pr.out = prcomp(mData.s, scale=F, center = F)
+
+initf = function(chain_id = 1) {
+  list(mEigens=pr.out$rotation[,1:2], mu = colMeans(mData.s), sigma = sd(rowSums(mData.s)), mComponents=pr.out$x[,1:2])
+} 
+
+lStanData = list(Ntotal=nrow(mData.s), Nvars=ncol(mData.s), Neigens=2,
+                 y=(mData.s))
+fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=4, cores=4, init=initf)
 print(fit.stan)
 
 lResults = extract(fit.stan)
@@ -78,15 +107,6 @@ mComp.2 = mComp[,,2]
 ivComp.2 = colMeans(mComp.2)
 
 plot(ivComp.1, ivComp.2)
-
-mStan = do.call(cbind, extract(fit.stan))
-colnames(mStan) = c('beta0', 'beta1', 'sigma')
-apply(mStan, 2, mean)
-apply(mStan, 2, sd)
-
-
-
-
 
 library(LearnBayes)
 
