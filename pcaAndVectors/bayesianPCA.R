@@ -108,6 +108,56 @@ ivComp.2 = colMeans(mComp.2)
 
 plot(ivComp.1, ivComp.2)
 
+### perform this on a larger data set
+load(file.choose())
+lData = lData_first
+mData = lData$data
+dim(mData)
+
+stanDso2 = rstan::stan_model(file='pcaAndVectors/bayesianPCA2.stan')
+
+mData.s = t(mData)
+mData = t(lData$data)
+## calculate initial values analytically 
+ivMeans = colMeans(mData.s)
+# centered data
+mData.s = sweep(mData.s, 2, ivMeans, '-')
+
+# covariance matrix for the data without scaling
+mCov = cov(mData)
+lEigens = eigen(mCov)
+dim(lEigens$vectors)
+
+## get the transformed points after running them through the matrix, i.e. input output system
+mData.rotated = t(lEigens$vectors) %*% t(mData.s)
+head(mData.rotated[,1:6])
+
+plot(t(mData.rotated), main='Centered and decorrelated', pch=20)
+
+initf = function(chain_id = 1) {
+  list(mEigens=lEigens$vectors[,1:20], mu = colMeans(mData), sigma = sd(rowSums(mData)), mComponents=t(mData.rotated)[,1:20],
+       sigma2=lEigens$values[1:20])
+} 
+
+lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=20,
+                 y=mData)
+fit.stan2 = sampling(stanDso2, data=lStanData, iter=500, chains=4, cores=4, init=initf)
+print(fit.stan2)
+
+lResults = extract(fit.stan2)
+mComp = lResults$mComponents
+mComp.1 = mComp[,,1]
+ivComp.1 = colMeans(mComp.1)
+mComp.2 = mComp[,,2]
+ivComp.2 = colMeans(mComp.2)
+
+plot(ivComp.1, ivComp.2)
+
+mSigmas = lResults$sigma2
+dim(mSigmas)
+round(apply(mSigmas, 2, mean),3)
+
+
 library(LearnBayes)
 
 # log posterior function

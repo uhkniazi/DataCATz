@@ -20,12 +20,18 @@ parameters { // the parameters to track
   matrix[Nvars, Neigens] mEigens; // note it is the transformation matrix 
   vector[Nvars] mu; // vector of means added to the centered rotated components 
   real<lower=0> sigma; // scale parameter for likelihood function
+  vector<lower=0>[Neigens] sigma2; // scale parameter for the eigen vectors
   vector[Neigens] mComponents[Ntotal]; // vector with Ntotal components for the rotated data with dimensions NTotal, Neigens
 }
 
 model {
   // prior for the sigma
   sigma ~ cauchy(0, 2.5); // weak prior
+  sigma2 ~ cauchy(0, 2.5); // weak prior
+  for (i in 1:Neigens){
+    mEigens[,i] ~ normal(0.0, sigma2[i]);  
+  }
+  
   // go through each sample/observation and generate
   // a sample for each rotated components
   for (i in 1:Ntotal){
