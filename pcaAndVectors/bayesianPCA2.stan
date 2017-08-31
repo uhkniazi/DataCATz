@@ -2,7 +2,7 @@ data {
   int<lower=1> Ntotal; // number of observations
   int<lower=1> Nvars; // number of variables/vectors in data matrix
   int<lower=1> Neigens; // number of eigen vectors to use
-  matrix[Ntotal, Nvars] y; // data matrix where each vector is in column format
+  vector[Nvars] y[Ntotal]; // data matrix where each vector is in column format
 }
 
 transformed data {
@@ -42,7 +42,7 @@ model {
   // Eigens X Rotations + Centering
   // i.e. Operations X Inputs
   for (i in 1:Ntotal){
-    y[i,] ~ normal( mEigens * mComponents[i] + mu , sigma);
+    y[i] ~ normal( mEigens * mComponents[i] + mu , sigma);
   }
 }
 

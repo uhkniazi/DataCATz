@@ -85,25 +85,48 @@ options(mc.cores = parallel::detectCores())
 
 stanDso = rstan::stan_model(file='pcaAndVectors/bayesianPCA.stan')
 
-## set initial values
-## give initial values if you want, look at the density plot 
-mData.s = scale(mData)
-pr.out = prcomp(mData.s, scale=F, center = F)
+### setting the initial values
+mData.s = mData
+## calculate initial values analytically 
+ivMeans = colMeans(mData.s)
+# centered data
+mData.s = sweep(mData.s, 2, ivMeans, '-')
+
+# covariance matrix for the data without scaling
+mCov = cov(mData)
+lEigens = eigen(mCov)
+dim(lEigens$vectors)
+
+## get the transformed points after running them through the matrix, i.e. input output system
+mData.rotated = t(lEigens$vectors) %*% t(mData.s)
+head(mData.rotated[,1:6])
+
+plot(t(mData.rotated), main='Centered and decorrelated', pch=20)
+
 
 initf = function(chain_id = 1) {
-  list(mEigens=pr.out$rotation[,1:2], mu = colMeans(mData.s), sigma = sd(rowSums(mData.s)), mComponents=pr.out$x[,1:2])
+  list(mEigens=lEigens$vectors[,1:2], sigma = sd(rowSums(mData)), mComponents=(mData.rotated)[1:2,])
 } 
 
-lStanData = list(Ntotal=nrow(mData.s), Nvars=ncol(mData.s), Neigens=2,
-                 y=(mData.s))
-fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=4, cores=4, init=initf)
+# mData.s = scale(mData)
+# pr.out = prcomp(mData.s, scale=F, center = F)
+# 
+# initf = function(chain_id = 1) {
+#   list(mEigens=pr.out$rotation[,1:2], mu = colMeans(mData.s), sigma = sd(rowSums(mData.s)), mComponents=pr.out$x[,1:2])
+# } 
+
+## set stan data
+lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=2,
+                 y=(mData))
+
+fit.stan = sampling(stanDso3, data=lStanData, iter=1000, chains=4, cores=4, control=list(adapt_delta=0.99, max_treedepth = 10))
 print(fit.stan)
 
 lResults = extract(fit.stan)
 mComp = lResults$mComponents
-mComp.1 = mComp[,,1]
+mComp.1 = mComp[,1,]
 ivComp.1 = colMeans(mComp.1)
-mComp.2 = mComp[,,2]
+mComp.2 = mComp[,2,]
 ivComp.2 = colMeans(mComp.2)
 
 plot(ivComp.1, ivComp.2)
@@ -114,7 +137,7 @@ lData = lData_first
 mData = lData$data
 dim(mData)
 
-stanDso2 = rstan::stan_model(file='pcaAndVectors/bayesianPCA2.stan')
+stanDso4 = rstan::stan_model(file='pcaAndVectors/bayesianPCA4.stan')
 
 mData.s = t(mData)
 mData = t(lData$data)
