@@ -30,7 +30,7 @@ model {
   matrix[Nvars, Ntotal] mFitted; // temporary variable to hold fitted values
   // prior for the sigma
   sigma ~ cauchy(0, 2.5); // weak prior
-  sigma2 ~ cauchy(0, 2.5); // weak prior
+  sigma2 ~ cauchy(0, 2.5);
   // sample the eigen vectors
   for (i in 1:Neigens){
     mEigens[,i] ~ normal(0.0, sigma2[i]);  
@@ -41,6 +41,7 @@ model {
   // for (i in 1:Ntotal){
   //   mComponents[,i] ~ multi_normal(mu0, mIdentity);
   // }
+  // see stan manual page 151 for this way of sampling from a multi_normal distribution
   mComponents ~ multi_normal(mu0, mIdentity);  
   
   // now take a sample for the data as a function of
