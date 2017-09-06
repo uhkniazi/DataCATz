@@ -65,7 +65,7 @@ mData.rotated = t(lEigens$vectors) %*% t(mData.s)
 rownames(mData.rotated) = c('Comp1', 'Comp2')
 mData.rotated[,1:6]
 
-plot(t(mData.rotated), main='Centered, Scaled and decorrelated - Whitening', pch=20)
+plot(t(mData.rotated), main='Whitening', pch=20)
 par(p.old)
 
 # perform PCA using the prcomp
@@ -91,7 +91,7 @@ mData = as.matrix(iris[,-5])
 stanDso = rstan::stan_model(file='pcaAndVectors/bayesianPCA.stan')
 
 ## set stan data
-lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=ncol(mData),
+lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=2,
                  y=scale(mData))
 
 # ## calculate initial values
@@ -99,7 +99,7 @@ lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=ncol(mData),
 #   list(mEigens=pr.out$rotation)
 # } 
 
-fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=4, cores=4)#, init=initf) 
+fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=3, cores=3)#, init=initf) 
                     #control=list(adapt_delta=0.99, max_treedepth = 10)) # some additional control values/not necessary usually
 print(fit.stan)
 
@@ -113,24 +113,32 @@ mComp.1 = mComp[,,1]
 ivComp.1 = colMeans(mComp.1)
 mComp.2 = mComp[,,2]
 ivComp.2 = colMeans(mComp.2)
-plot(ivComp.1, ivComp.2, pch=20)
+
+ivCols = rainbow(n = nlevels(iris$Species))
+ivCols = ivCols[as.numeric(iris$Species)]
+par(mfrow=c(2,2))
+plot(ivComp.2, ivComp.1, pch=20, col=ivCols, xlab='PC2', ylab='PC1', main='MCMC 1')
+
+pr.out = prcomp(mData, scale=T, center = T)
+plot(pr.out$x, pch=20, col=ivCols, main='Analytical')
+
 
 ## try a second approach with an additional parameter for variance of eigen vectors
 stanDso2 = rstan::stan_model(file='pcaAndVectors/bayesianPCA2.stan')
 
-## load a high dimension data set with zeros
-load(file.choose())
-mData = t(lData_first$data)
-dim(mData)
-
-pr.out = prcomp(mData, scale=F, center = T)
-plot(pr.out$x)
+# ## load a high dimension data set with zeros
+# load(file.choose())
+# mData = t(lData_first$data)
+# dim(mData)
+# 
+# pr.out = prcomp(mData, scale=F, center = T)
+# plot(pr.out$x)
 
 ## set stan data
 lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=2,
                  y=mData)
 
-fit.stan2 = sampling(stanDso2, data=lStanData, iter=1000, chains=1, cores=1)#, #init=initf, 
+fit.stan2 = sampling(stanDso2, data=lStanData, iter=5000, chains=3, cores=3)#, #init=initf, 
                     #control=list(adapt_delta=0.99, max_treedepth = 10)) # some additional control values/not necessary usually
 print(fit.stan2)
 
@@ -147,16 +155,16 @@ mComp.1 = mComp[,,1]
 ivComp.1 = colMeans(mComp.1)
 mComp.2 = mComp[,,2]
 ivComp.2 = colMeans(mComp.2)
-plot(ivComp.1, ivComp.2, pch=20)
+plot(ivComp.1, ivComp.2, pch=20, col=ivCols, xlab='PC1', ylab='PC2', main='MCMC 2')
 
 ## try a third approach with a different way to sample from multi_normal distribution
 stanDso3 = rstan::stan_model(file='pcaAndVectors/bayesianPCA3.stan')
 
 ## set stan data
 lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=2,
-                 y=(mData))
+                 y=scale(mData))
 
-fit.stan3 = sampling(stanDso3, data=lStanData, iter=1000, chains=1, cores=1)#, #init=initf, 
+fit.stan3 = sampling(stanDso3, data=lStanData, iter=5000, chains=3, cores=3)#, #init=initf, 
                      #control=list(adapt_delta=0.99, max_treedepth = 10)) # some additional control values/not necessary usually
 print(fit.stan3)
 
@@ -173,16 +181,16 @@ mComp.1 = mComp[,,3]
 ivComp.1 = colMeans(mComp.1)
 mComp.2 = mComp[,,1]
 ivComp.2 = colMeans(mComp.2)
-plot(ivComp.1, ivComp.2, pch=20)
+plot(ivComp.1, ivComp.2, pch=20, col=ivCols, xlab='PC1', ylab='PC2', main='MCMC 3')
 
 ## try a 4th approach but not using multi_normal 
 stanDso4 = rstan::stan_model(file='pcaAndVectors/bayesianPCA4.stan')
 
 ## set stan data
-lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=ncol(mData),
-                 y=(mData))
+lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=2,
+                 y=scale(mData))
 
-fit.stan4 = sampling(stanDso4, data=lStanData, iter=2000, chains=1, cores=1)#, #init=initf, 
+fit.stan4 = sampling(stanDso4, data=lStanData, iter=5000, chains=3, cores=3)#, #init=initf, 
                      #control=list(adapt_delta=0.99, max_treedepth = 10)) # some additional control values/not necessary usually
 print(fit.stan4)
 
@@ -197,7 +205,7 @@ dim(mComp)
 ## get the first 2 latent variables for plotting
 mComp.1 = mComp[,,1]
 ivComp.1 = colMeans(mComp.1)
-mComp.2 = mComp[,,1]
+mComp.2 = mComp[,,2]
 ivComp.2 = colMeans(mComp.2)
 plot(ivComp.1, ivComp.2, pch=20)
 
