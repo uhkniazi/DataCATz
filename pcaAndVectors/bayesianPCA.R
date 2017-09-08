@@ -54,6 +54,34 @@ mData.original = sweep(mData.original.s, 1, ivMeans, '+')
 mData.original[,1:6]
 t(mData)[,1:6]
 
+## whiten the data
+whiten = function(mData){
+  ## center the data
+  ivMeans = colMeans(mData)
+  # centered data
+  mData.s = sweep(mData, 2, ivMeans, '-')
+  ## calculate covariance matrix
+  mCov = cov(mData)
+  ## see bishop 2006 chapter 12 page 568 for formula
+  # y = 1/sqrt(L) * t(U) * centered data
+  ## get the eigen vectors and values
+  lEigens = eigen(mCov)
+  L = diag(lEigens$values)
+  U = lEigens$vectors
+  # invert after taking square root
+  Z = solve(sqrt(L))
+  Z = Z %*% t(U)
+  yn = Z %*% t(mData.s)
+  rownames(yn) = colnames(mData)
+  return(t(yn))
+}
+
+mData.white = whiten(mData)
+
+plot(mData.white, main='Whitening', pch=20)
+par(p.old)
+
+
 ## repeat but with scaling and centring as well
 mData.s = scale(mData)
 mCov = cov(mData.s)
@@ -65,8 +93,7 @@ mData.rotated = t(lEigens$vectors) %*% t(mData.s)
 rownames(mData.rotated) = c('Comp1', 'Comp2')
 mData.rotated[,1:6]
 
-plot(t(mData.rotated), main='Whitening', pch=20)
-par(p.old)
+
 
 # perform PCA using the prcomp
 # the vectors are in columns
@@ -126,14 +153,6 @@ plot(pr.out$x, pch=20, col=ivCols, main='Analytical')
 ## try a second approach with an additional parameter for variance of eigen vectors
 stanDso2 = rstan::stan_model(file='pcaAndVectors/bayesianPCA2.stan')
 
-# ## load a high dimension data set with zeros
-# load(file.choose())
-# mData = t(lData_first$data)
-# dim(mData)
-# 
-# pr.out = prcomp(mData, scale=F, center = T)
-# plot(pr.out$x)
-
 ## set stan data
 lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=2,
                  y=mData)
@@ -183,131 +202,87 @@ mComp.2 = mComp[,,1]
 ivComp.2 = colMeans(mComp.2)
 plot(ivComp.1, ivComp.2, pch=20, col=ivCols, xlab='PC1', ylab='PC2', main='MCMC 3')
 
-## try a 4th approach but not using multi_normal 
-stanDso4 = rstan::stan_model(file='pcaAndVectors/bayesianPCA4.stan')
+
+################ repeat with a high dimensional dataset
+## load a high dimension data set with zeros
+load(file.choose())
+mData = t(lData_first$data)
+dim(mData)
+
+pr.out = prcomp(mData, scale=F, center = T)
+plot(pr.out$x)
+
+## try a second approach with an additional parameter for variance of eigen vectors
+stanDso2 = rstan::stan_model(file='pcaAndVectors/bayesianPCA2.stan')
 
 ## set stan data
-lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=2,
-                 y=scale(mData))
+lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=min(dim(mData)),
+                 y=mData)
 
-fit.stan4 = sampling(stanDso4, data=lStanData, iter=5000, chains=3, cores=3)#, #init=initf, 
-                     #control=list(adapt_delta=0.99, max_treedepth = 10)) # some additional control values/not necessary usually
-print(fit.stan4)
+fit.stan2 = sampling(stanDso2, data=lStanData, iter=1000, chains=2, cores=2)#, #init=initf, 
+#control=list(adapt_delta=0.99, max_treedepth = 10)) # some additional control values/not necessary usually
+print(fit.stan2)
 
 ## extract the results
-lResults = extract(fit.stan4)
+lResults = extract(fit.stan2)
 ## extract the variances
 mSigma2 = lResults$sigma2
 summary(mSigma2)
+iSigma2 = colMeans(mSigma2)
+
+## plot the scale parameters 
+iOrder = order(iSigma2, decreasing = T)
+par(mfrow=c(2,2))
+plot(iSigma2[iOrder], type='b', xlab='Index', ylab='Standard Deviation', main='MCMC SD Eigen Vec')
+plot(pr.out$sdev, type='b', xlab='Index', ylab='Standard Deviation', main='Analytical SD')
+
 ## extract the latent variables
 mComp = lResults$mComponents
 dim(mComp)
 ## get the first 2 latent variables for plotting
-mComp.1 = mComp[,,1]
+mComp.1 = mComp[,,iOrder[1]]
 ivComp.1 = colMeans(mComp.1)
-mComp.2 = mComp[,,2]
+mComp.2 = mComp[,,iOrder[2]]
 ivComp.2 = colMeans(mComp.2)
-plot(ivComp.1, ivComp.2, pch=20)
+
+ivCols = rainbow(n = nlevels(lData_first$batch))
+ivCols = ivCols[as.numeric(lData_first$batch)]
+plot(ivComp.1, ivComp.2, pch=20, col=ivCols, xlab='PC1', ylab='PC2', main='MCMC 2')
 
 
 
 
 
-### setting the initial values
-mData.s = mData
-## calculate initial values analytically 
-ivMeans = colMeans(mData.s)
-# centered data
-mData.s = sweep(mData.s, 2, ivMeans, '-')
-
-# covariance matrix for the data without scaling
-mCov = cov(mData)
-lEigens = eigen(mCov)
-dim(lEigens$vectors)
-
-## get the transformed points after running them through the matrix, i.e. input output system
-mData.rotated = t(lEigens$vectors) %*% t(mData)
-head(mData.rotated[,1:6])
-
-plot(t(mData.rotated), main='Centered and decorrelated', pch=20)
 
 
-initf = function(chain_id = 1) {
-  list(mEigens=lEigens$vectors[,1:2], sigma2 = sqrt(lEigens$values))
-} 
 
-# mData.s = scale(mData)
-# pr.out = prcomp(mData.s, scale=F, center = F)
+### remove this 4th approach 
+# ## try a 4th approach but not using multi_normal 
+# stanDso4 = rstan::stan_model(file='pcaAndVectors/bayesianPCA4.stan')
 # 
-# initf = function(chain_id = 1) {
-#   list(mEigens=pr.out$rotation[,1:2], mu = colMeans(mData.s), sigma = sd(rowSums(mData.s)), mComponents=pr.out$x[,1:2])
-# } 
+# ## set stan data
+# lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=2,
+#                  y=scale(mData))
+# 
+# fit.stan4 = sampling(stanDso4, data=lStanData, iter=5000, chains=3, cores=3)#, #init=initf, 
+#                      #control=list(adapt_delta=0.99, max_treedepth = 10)) # some additional control values/not necessary usually
+# print(fit.stan4)
+# 
+# ## extract the results
+# lResults = extract(fit.stan4)
+# ## extract the variances
+# mSigma2 = lResults$sigma2
+# summary(mSigma2)
+# ## extract the latent variables
+# mComp = lResults$mComponents
+# dim(mComp)
+# ## get the first 2 latent variables for plotting
+# mComp.1 = mComp[,,1]
+# ivComp.1 = colMeans(mComp.1)
+# mComp.2 = mComp[,,2]
+# ivComp.2 = colMeans(mComp.2)
+# plot(ivComp.1, ivComp.2, pch=20)
 
-## set stan data
-lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=2,
-                 y=(mData))
-
-fit.stan = sampling(stanDso2, data=lStanData, iter=500, chains=4, cores=4, init=initf, 
-                    control=list(adapt_delta=0.99, max_treedepth = 10))
-print(fit.stan)
-
-lResults = extract(fit.stan)
-mComp = lResults$mComponents
-mComp.1 = mComp[,,1]
-ivComp.1 = colMeans(mComp.1)
-mComp.2 = mComp[,,2]
-ivComp.2 = colMeans(mComp.2)
-
-plot(ivComp.1, ivComp.2, pch=20)
-plot(ivComp.2, mData.rotated[2,])
-### perform this on a larger data set
-load(file.choose())
-lData = lData_first
-mData = lData$data
-dim(mData)
-
-stanDso3 = rstan::stan_model(file='pcaAndVectors/bayesianPCA3.stan')
-
-mData.s = t(mData)
-mData = t(lData$data)
-## calculate initial values analytically 
-ivMeans = colMeans(mData.s)
-# centered data
-mData.s = sweep(mData.s, 2, ivMeans, '-')
-
-# covariance matrix for the data without scaling
-mCov = cov(mData)
-lEigens = eigen(mCov)
-dim(lEigens$vectors)
-
-## get the transformed points after running them through the matrix, i.e. input output system
-mData.rotated = t(lEigens$vectors) %*% t(mData.s)
-head(mData.rotated[,1:6])
-
-plot(t(mData.rotated), main='Centered and decorrelated', pch=20)
-
-initf = function(chain_id = 1) {
-  list(mEigens=lEigens$vectors[,1:20], mu = colMeans(mData), sigma = sd(rowSums(mData)), mComponents=t(mData.rotated)[,1:20],
-       sigma2=lEigens$values[1:20])
-} 
-
-lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=20,
-                 y=mData)
-fit.stan2 = sampling(stanDso2, data=lStanData, iter=500, chains=4, cores=4, init=initf)
-print(fit.stan2)
-
-lResults = extract(fit.stan2)
-mComp = lResults$mComponents
-mComp.1 = mComp[,,1]
-ivComp.1 = colMeans(mComp.1)
-mComp.2 = mComp[,,2]
-ivComp.2 = colMeans(mComp.2)
-
-plot(ivComp.1, ivComp.2)
-
-mSigmas = lResults$sigma2
-dim(mSigmas)
-round(apply(mSigmas, 2, mean),3)
 
 
 library(LearnBayes)
