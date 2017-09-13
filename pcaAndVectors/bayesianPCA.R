@@ -16,7 +16,7 @@ mData = as.matrix(faithful)
 str(mData)
 
 
-p.old = par(mfrow=c(2,2))
+p.old = par(mfrow=c(3,2))
 plot(mData, pch=20, main='raw')
 ## now standardize the data with 0 mean and variance 1
 plot(scale(mData), pch=20, main='Scaled and Centered')
@@ -42,6 +42,7 @@ rownames(mData.rotated) = c('Comp1', 'Comp2')
 mData.rotated[,1:6]
 
 plot(t(mData.rotated), main='Centered and decorrelated', pch=20)
+plot(prcomp(mData, center = T, scale. = T)$x, main='Centered, Scaled and decorrelated', pch=20)
 
 ## get the original data back
 ## rowDataMatrix = (inverse(rowEigenVectors) * rotated Data) + original Means
@@ -78,7 +79,7 @@ whiten = function(mData){
 
 mData.white = whiten(mData)
 
-plot(mData.white, main='Whitening', pch=20)
+plot(mData.white, main='Whitening', pch=20, xlab='Var 1', ylab='Var 2')
 par(p.old)
 
 
@@ -209,9 +210,6 @@ load(file.choose())
 mData = t(lData_first$data)
 dim(mData)
 
-pr.out = prcomp(mData, scale=F, center = T)
-plot(pr.out$x)
-
 ## try a second approach with an additional parameter for variance of eigen vectors
 stanDso2 = rstan::stan_model(file='pcaAndVectors/bayesianPCA2.stan')
 
@@ -219,7 +217,7 @@ stanDso2 = rstan::stan_model(file='pcaAndVectors/bayesianPCA2.stan')
 lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=min(dim(mData)),
                  y=mData)
 
-fit.stan2 = sampling(stanDso2, data=lStanData, iter=1000, chains=2, cores=2)#, #init=initf, 
+fit.stan2 = sampling(stanDso2, data=lStanData, iter=10000, chains=2, cores=2)#, #init=initf, 
 #control=list(adapt_delta=0.99, max_treedepth = 10)) # some additional control values/not necessary usually
 print(fit.stan2)
 
@@ -232,9 +230,10 @@ iSigma2 = colMeans(mSigma2)
 
 ## plot the scale parameters 
 iOrder = order(iSigma2, decreasing = T)
-par(mfrow=c(2,2))
-plot(iSigma2[iOrder], type='b', xlab='Index', ylab='Standard Deviation', main='MCMC SD Eigen Vec')
-plot(pr.out$sdev, type='b', xlab='Index', ylab='Standard Deviation', main='Analytical SD')
+# par(mfrow=c(2,2))
+# plot(iSigma2[iOrder], type='b', xlab='Index', ylab='Standard Deviation', main='MCMC SD Eigen Vec')
+# pr.out = prcomp(mData, scale=F, center = T)
+# plot(pr.out$sdev, type='b', xlab='Index', ylab='Standard Deviation', main='Analytical SD')
 
 ## extract the latent variables
 mComp = lResults$mComponents
@@ -247,7 +246,13 @@ ivComp.2 = colMeans(mComp.2)
 
 ivCols = rainbow(n = nlevels(lData_first$batch))
 ivCols = ivCols[as.numeric(lData_first$batch)]
-plot(ivComp.1, ivComp.2, pch=20, col=ivCols, xlab='PC1', ylab='PC2', main='MCMC 2')
+par(mfrow=c(1,2))
+plot(1*ivComp.2, 1*ivComp.1, pch=20, col=ivCols, xlab='PC1', ylab='PC2', main='MCMC 2')
+text(1*ivComp.2, 1*ivComp.1, labels = rownames(mData), adj =c(0.5, -0.5) , cex = 0.6)
+pr.out = prcomp(mData, scale=F, center = T)
+plot(pr.out$x, col=ivCols, pch=20, main='Analytical')
+text(pr.out$x, labels = rownames(mData), adj = 1.5, cex = 0.6)
+
 
 
 
