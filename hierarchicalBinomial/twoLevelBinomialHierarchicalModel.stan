@@ -9,20 +9,26 @@ data {
 }
 
 parameters { // the parameters to track
-  // omega1 ~ beta(omega0, kappa0)
-  real<lower=2> kappa0; // concentration parameter for top level beta distribution
-  real omega0; // mean parameter for top level beta distribution
-  // theta ~ beta(omega1, kappa1)
-  real<lower=2> kappa1[Nlevels1]; // concentration parameters for level 1 beta distributions
-  real omega1[Nlevels1]; // concentration parameters for level 1 beta distributions
-  real<lower=0, upper=1> theta[Nlevels2]; // theta parameters 
-    vector[Ncol] betas; // regression parameters
-    real<lower=-1> sigma; // scale parameter for normal distribution  
-  }
-transformed parameters {
-  vector[Ntotal] mu; // fitted values from linear predictor
-  mu = X*betas; // fitted value using identity link
+  real theta[NgroupsLvl2];
+  real omega1[NgroupsLvl1];
+  real<lower=2> kappa1[NgroupsLvl1];
+  real<lower=2> kappa0;
+  real omega0;
 }
+// transformed parameters {
+// 
+// }
 model {
-  y ~ normal( mu , exp(sigma));
+  /////// hyper-hyperparameter distributions
+  // using Jeffreys non informative prior
+  omega0 ~ beta(0.5, 0.5);
+  kappa0 ~ gamma(0.5, 1e-4);
+  ////// hyperparameter distributions
+  omega1 ~ beta(omega0*(kappa0-2)+1, (1-omega0)*(kappa0-2)+1);
+  // using Jeffreys non informative prior for gamma distribution
+  kappa1 ~ gamma(0.5, 1e-4);
+  // 1st level prior for theta
+  theta ~ beta(omega1*(kappa1-2)+1, (1-omega1)*(kappa1-2)+1);
+  ////// likelihood
+  y ~ binomial(Ntotal, theta);
 }
