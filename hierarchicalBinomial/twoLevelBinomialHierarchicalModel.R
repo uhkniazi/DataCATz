@@ -34,7 +34,6 @@ lStanData = list(Ntotal=nrow(dfData), NgroupsLvl1=nlevels(dfData$group1),
                  y=dfData$methylated, 
                  N=dfData$total)
 
-fit.stan = sampling(stanDso, data=lStanData, iter=4000, chains=4, pars=c('betas', 'sigmaRan1', 'sigmaRan2',
-                                                                         'sigmaPop','nu', 'mu', 'rGroupsJitter1', 'rGroupsJitter2'),
-                    cores=4)#, control=list(adapt_delta=0.99, max_treedepth = 15))
+fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=2,
+                    cores=2)#, control=list(adapt_delta=0.99, max_treedepth = 15))
 print(fit.stan, c('betas', 'sigmaRan1', 'sigmaRan2', 'sigmaPop', 'nu'), digits=3)

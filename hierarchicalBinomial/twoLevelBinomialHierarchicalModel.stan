@@ -10,34 +10,29 @@ data {
 
 parameters { // the parameters to track
   real<lower=0, upper=1> theta[NgroupsLvl2];
-  //real omega1[NgroupsLvl1];
-  //real<lower=2> kappa1[NgroupsLvl1];
-  //real<lower=2> kappa0;
-  //real omega0;
+  real<lower=0, upper=1> omega1[NgroupsLvl1];
+  real<lower=2> kappa1[NgroupsLvl1];
+  real<lower=2> kappa0;
+  real<lower=0, upper=1> omega0;
 }
-transformed parameters {
-
-}
+// transformed parameters {
+// 
+// }
 model {
   /////// level 0 - hyper-hyperparameter distributions
   // using Jeffreys non informative prior
-  //omega0 ~ beta(0.5, 0.5);
-  //kappa0 ~ gamma(0.5, 1e-4);
+  omega0 ~ beta(0.5, 0.5);
+  kappa0 ~ gamma(0.5, 1e-4);
   ////// level 1 - hyperparameter distributions
-  //omega1 ~ beta(omega0*(kappa0-2)+1, (1-omega0)*(kappa0-2)+1);
-  //omega1 ~ beta(0.5, 0.5);
+  omega1 ~ beta(omega0*(kappa0-2)+1, (1-omega0)*(kappa0-2)+1);
   // using Jeffreys non informative prior for gamma distribution
-  //kappa1 ~ gamma(0.5, 1e-4);
+  kappa1 ~ gamma(0.5, 1e-4);
   ///// level 2
   // distribution for level 2 paremeter - used in the likelihood
   for (i in 1:NgroupsLvl2){
-    // theta[i] ~ beta(omega1[NgroupsLvl2Map[i]]*(kappa1[NgroupsLvl2Map[i]]-2)+1, (1-omega1[NgroupsLvl2Map[i]])*(kappa1[NgroupsLvl2Map[i]]-2)+1);
-    theta[i] ~ beta(0.5, 0.5);
+    theta[i] ~ beta(omega1[NgroupsLvl2Map[i]]*(kappa1[NgroupsLvl2Map[i]]-2)+1, (1-omega1[NgroupsLvl2Map[i]])*(kappa1[NgroupsLvl2Map[i]]-2)+1);
   }
   
   ////// likelihood
-  for (i in 1:Ntotal) {
-    y[i] ~ binomial(N[i], theta[NdataMap[i]]);
-  }
-  // y ~ binomial(N, theta[NdataMap]);
+  y ~ binomial(N, theta[NdataMap]);
 }
