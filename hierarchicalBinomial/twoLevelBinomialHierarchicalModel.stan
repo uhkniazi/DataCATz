@@ -2,7 +2,6 @@ data {
   int<lower=1> Ntotal; // number of observations
   int<lower=1> NgroupsLvl1; // number of levels for the level 1 of hierarchy - population level
   int<lower=1, upper=NgroupsLvl1> NgroupsLvl2Map[Ntotal]; // mapping variable to map each value at lvl 2 of hierarchy to lvl 1 variables
-  int<lower=1, upper=Ntotal> NdataMap[Ntotal]; // mapping variable to map each level 2 prior to the data
   int y[Ntotal]; // number of success
   int<lower=1> N[Ntotal]; // total trials, at least one trial
 }
@@ -35,5 +34,5 @@ model {
   }
   
   ////// likelihood
-  y ~ binomial(N, theta[NdataMap]);
+  y ~ binomial(N, theta);
 }
