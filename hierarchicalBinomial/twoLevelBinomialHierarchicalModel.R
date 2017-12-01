@@ -1,7 +1,8 @@
 # Name: twoLevelBinomialHierarchicalModel.R
 # Auth: uhkniazi
 # Date: 09/11/2017
-# Desc: model from [1] Kruschke, J. K. (2014). Doing Bayesian data analysis: Chapter 9
+# Desc: models from [1] Kruschke, J. K. (2014). Doing Bayesian data analysis: Chapter 9
+#       and [2] Gelman (2013). Bayesian Data Analysis: Chapter 5
 
 
 library(LearnBayes)
@@ -41,7 +42,7 @@ lStanData = list(Ntotal=nrow(dfData), NgroupsLvl1=nlevels(dfData$PriPos),
                  y=dfData$Hits,
                  N=dfData$AtBats)
 
-fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=2,
+fit.stan = sampling(stanDso, data=lStanData, iter=2000, chains=2,
                     cores=2)#, control=list(adapt_delta=0.99, max_treedepth = 15))
 print(fit.stan, c('omega1', 'kappa1', 'kappa0', 'omega0'), digits=3)
 
@@ -125,7 +126,7 @@ plot(colMeans(mPositions), colMeans(mPositions.2), pch=20, xlim=c(0.23, 0.27), y
 
 ########### try a conjugate approach 
 ## get alpha and beta parameters for the beta distribution from the data
-## see gelman p 583
+## see gelman [2] p 583
 getalphabeta = function(m, v){
   al.be = (m * (1-m) / v) - 1
   al = al.be * m
@@ -133,6 +134,7 @@ getalphabeta = function(m, v){
   return(c(alpha=al, beta=be))
 }
 
+## take a sample from beta posterior 
 getFittedTheta = function(param){
   iAlpha = param[1];
   iBeta = param[2];
@@ -143,7 +145,7 @@ getFittedTheta = function(param){
 
 
 ## get the hyperparameters using all the data
-ivThetas.data = dfData.2$Hits/dfData.2$AtBats + 0.5
+ivThetas.data = dfData.2$Hits/dfData.2$AtBats
 ## get hyperparameters using population data
 l = getalphabeta(mean(ivThetas.data), var(ivThetas.data))
 
@@ -155,14 +157,82 @@ m = cbind(l['alpha'], l['beta'], suc, fail)
 
 mPositions.conj = apply(m, 1, getFittedTheta)
 
-## use these to estimate the parameters for each level 2
-## lets put this into a function to make it simpler
-getBetaBinomialPosterior = function(suc, trials, grouping, prior.alpha, prior.beta){
-  s = tapply(suc, grouping, sum)
-  t = tapply(trials, grouping, sum)
-  m = cbind(prior.alpha, prior.beta, s, t-s)
-  return(apply(m, 1, getTheta))
+plot(colMeans(mPositions), colMeans(mPositions.conj), pch=20, xlim=c(0.23, 0.27), ylim=c(0.23, 0.27))
+points(colMeans(mPositions), colMeans(mPositions.2), pch=20, col=2)
+
+##################################################################
+### lets try an optimisation based approach
+library(car) ## for logit function
+library(LearnBayes)
+library(numDeriv)
+logit.inv = function(p) {exp(p)/(exp(p)+1) }
+
+### define log posterior
+mylogpost = function(theta, data){
+  ## parameters to track/estimate
+  iTheta = logit.inv(theta[grep('theta', names(theta))])
+  iAlpha1 = (theta[grep('alpha1', names(theta))])
+  iBeta1 = (theta[grep('beta1', names(theta))])
+  
+  ## data, binomial
+  iSuc = data$success # resp
+  iTotal = data$trials
+  groupIndex = data$groupIndex # mapping variable
+  iTheta = iTheta[groupIndex]
+  
+  # checks on parameters
+  if (any(iAlpha1 < 0) | any(iBeta1 < 0)) return(-Inf)
+  # write the priors and likelihood
+  lp = sum(dbeta(iTheta, iAlpha1, iBeta1, log=T)) + 1
+  lik = sum(dbinom(iSuc, iTotal, iTheta, log=T))
+  val = lik + lp
+  return(val)
 }
+
+lData = list(success=dfData.2$Hits, trials=dfData.2$AtBats, groupIndex=as.numeric(dfData.2$PriPos))
+## set starting values
+s1 = logit(lData$success / lData$trials)
+names(s1) = rep('theta', times=length(s1))
+s2 = c(alpha1=0.5, beta1=0.5)
+start = c(s1, s2)
+
+## test function
+mylogpost(start, lData)
+
+fit.1 = laplace(mylogpost, start, lData)
+
+# define a modification of the laplace function from learnbayes
+library(numDeriv)
+library(optimx)
+
+mylaplace = function (logpost, mode, data) 
+{
+  options(warn = -1)
+  fit = optim(mode, logpost, gr = NULL,  
+              control = list(fnscale = -1, maxit=10000), method='Nelder-Mead', data=data)
+  # calculate hessian
+  fit$hessian = (hessian(logpost, fit$par, data=data))
+  colnames(fit$hessian) = names(mode)
+  rownames(fit$hessian) = names(mode)
+  options(warn = 0)
+  mode = fit$par
+  h = -solve(fit$hessian)
+  stuff = list(mode = mode, var = h, converge = fit$convergence == 
+                 0)
+  return(stuff)
+}
+
+fit.2 = mylaplace(mylogpost, start, lData)
+
+## lets take a sample from this
+## parameters for the multivariate t density
+tpar = list(m=fit.2$mode, var=fit.2$var*2, df=4)
+## get a sample directly and using sir (sampling importance resampling with a t proposal density)
+s = sir(mylogpost, tpar, 1000, lData)
+
+
+
+
 
 
 
