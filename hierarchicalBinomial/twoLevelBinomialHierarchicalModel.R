@@ -105,7 +105,7 @@ lStanData = list(Ntotal=nrow(dfData.2), Ngroups1=nlevels(dfData.2$PriPos),
                  y=dfData.2$Hits,
                  N=dfData.2$AtBats)
 
-fit.stan.2 = sampling(stanDso.2, data=lStanData, iter=1000, chains=2,
+fit.stan.2 = sampling(stanDso.2, data=lStanData, iter=2000, chains=2,
                     cores=2)#, control=list(adapt_delta=0.99, max_treedepth = 15))
 print(fit.stan.2, digits=3)
 
@@ -140,7 +140,7 @@ getFittedTheta = function(param){
   iBeta = param[2];
   iSuc = param[3];
   iFail = param[4];
-  return(rbeta(1000, iSuc+iAlpha, iFail+iBeta))
+  return(rbeta(2000, iSuc+iAlpha, iFail+iBeta))
 }
 
 
@@ -171,8 +171,8 @@ logit.inv = function(p) {exp(p)/(exp(p)+1) }
 mylogpost = function(theta, data){
   ## parameters to track/estimate
   iTheta = logit.inv(theta[grep('theta', names(theta))])
-  iAlpha1 = (theta[grep('alpha1', names(theta))])
-  iBeta1 = (theta[grep('beta1', names(theta))])
+  iAlpha1 = theta[grep('alpha1', names(theta))]
+  iBeta1 = theta[grep('beta1', names(theta))]
   
   ## data, binomial
   iSuc = data$success # resp
@@ -228,16 +228,34 @@ fit.2 = mylaplace(mylogpost, start, lData)
 ## parameters for the multivariate t density
 tpar = list(m=fit.2$mode, var=fit.2$var*2, df=4)
 ## get a sample directly and using sir (sampling importance resampling with a t proposal density)
-s = sir(mylogpost, tpar, 1000, lData)
+s = sir(mylogpost, tpar, 5000, lData)
+s = logit.inv(s[,1:9])
+colnames(s) = levels(dfData.2$PriPos)
 
+### lets compare the results from the 4 different analyses
+p1 = density(mPositions[,'Pitcher'])
+p1$y = p1$y/max(p1$y)
+par(mfrow=c(1,1))
+plot(p1, main='Pitcher', lwd=2) 
+p1 = density(mPositions.2[,'Pitcher'])
+p1$y = p1$y/max(p1$y)
+lines(p1, col=2, lwd=2)
+p1 = density(mPositions.conj[,'Pitcher'])
+p1$y = p1$y/max(p1$y)
+lines(p1, col=3, lwd=2)
+p1 = density(s[,'Pitcher'])
+p1$y = p1$y/max(p1$y)
+lines(p1, col=4, lwd=2)
 
+legend('topleft', legend = c('2 Level', '1 Level', 'Conjugate', 'SIR'), fill=c(1, 2, 3, 4))
 
+##########################################################################################
+## application to the mouse data set from [2]
+rm(dfData)
+rm(dfData.2)
 
-
-
-
-
-
+dfData = read.csv('mouseTumor.csv')
+str(dfData)
 
 
 
