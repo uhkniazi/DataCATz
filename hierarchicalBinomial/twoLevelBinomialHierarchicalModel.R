@@ -256,7 +256,75 @@ rm(dfData.2)
 
 dfData = read.csv('mouseTumor.csv')
 str(dfData)
+dfData = rbind(dfData, c(4, 14))
+dfData$group = factor(1:nrow(dfData))
+str(dfData)
 
+## setup the stan data
+lStanData = list(Ntotal=nrow(dfData), Ngroups1=nlevels(dfData$group), 
+                 NgroupsMap=as.numeric(dfData$group),
+                 y=dfData$success,
+                 N=dfData$trials)
+
+fit.stan.2 = sampling(stanDso.2, data=lStanData, iter=2000, chains=2,
+                      cores=2)#, control=list(adapt_delta=0.99, max_treedepth = 15))
+print(fit.stan.2, digits=3)
+
+mMutations = extract(fit.stan.2)$theta
+colnames(mMutations) = levels(dfData$group)
+
+### try a conjugate, ebayes approach
+nrow(dfData)
+ivThetas.data = dfData$success[1:77]/dfData$trials[1:77]
+## get hyperparameters using population data
+l = getalphabeta(mean(ivThetas.data), var(ivThetas.data))
+
+## use the data to calculate success and failures
+suc = dfData$success[78]
+fail = dfData$trials[78] - dfData$success[78]
+
+ivMutations.conj = getFittedTheta(c(l['alpha'], l['beta'], suc, fail))
+
+## lets try optimization based approach
+lData = list(success=dfData$success, trials=dfData$trials, groupIndex=as.numeric(dfData$group))
+## set starting values
+s1 = logit(lData$success / lData$trials)
+names(s1) = rep('theta', times=length(s1))
+s2 = c(alpha1=0.5, beta1=0.5)
+start = c(s1, s2)
+
+## test function
+mylogpost(start, lData)
+
+fit.1 = laplace(mylogpost, start, lData)
+fit.2 = mylaplace(mylogpost, start, lData)
+
+## check which optimiser works and converges
+library(optimx)
+op = optimx(start, mylogpost, control = list(maximize=T, usenumDeriv=T, all.methods=T), data=lData)
+
+## lets take a sample from this
+## parameters for the multivariate t density
+tpar = list(m=fit.2$mode, var=fit.2$var*2, df=4)
+## get a sample directly and using sir (sampling importance resampling with a t proposal density)
+s = sir(mylogpost, tpar, 5000, lData)
+s = logit.inv(s[,78])
+
+p1 = density(mMutations[,78])
+p1$y = p1$y/max(p1$y)
+par(mfrow=c(1,1))
+plot(p1, main='Mouse 78', lwd=2) 
+p1 = density(ivMutations.conj)
+p1$y = p1$y/max(p1$y)
+lines(p1, col=2, lwd=2)
+p1 = density(s)
+p1$y = p1$y/max(p1$y)
+lines(p1, col=2, lwd=3)
+
+###
+
+plot(density(mMutations[,78]), main='Mouse 78')
+lines(density(ivMutations.conj))
 
 
 
