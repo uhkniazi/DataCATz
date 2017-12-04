@@ -8,14 +8,19 @@ data {
 
 parameters { // the parameters to track
   real<lower=0, upper=1> theta[Ntotal];   // parameter of interest for level 1 of hierarachy
-  real<lower=0, upper=1> alpha; // hyper-parameter or population level parameter  
-  real<lower=0> beta; // hyper-parameter 
+  real<lower=0, upper=1> AlDivBe; // transformed hyper-parameter or population level parameter  
+  real<lower=1> AlPlusBe; // transformed hyper-parameter 
 }
-// transformed parameters {
-// 
-// }
+transformed parameters {
+  real alpha;
+  real beta;
+  alpha = AlPlusBe / (1 + (1/AlDivBe));
+  beta = AlPlusBe - alpha;
+}
 model {
-  // distribution for level paremeter - used in the likelihood
+  AlDivBe ~ beta(0.5, 0.5);
+  AlPlusBe ~ gamma(0.5, 1e-4);
+  // distribution for population paremeter with hyperparameters alpha and beta
   theta ~ beta(alpha, beta);
   ////// likelihood
   y ~ binomial(N, theta[NgroupsMap]);

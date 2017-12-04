@@ -160,6 +160,11 @@ mPositions.conj = apply(m, 1, getFittedTheta)
 plot(colMeans(mPositions), colMeans(mPositions.conj), pch=20, xlim=c(0.23, 0.27), ylim=c(0.23, 0.27))
 points(colMeans(mPositions), colMeans(mPositions.2), pch=20, col=2)
 
+data.frame(m.2lvl = round(colMeans(mPositions), 2),
+           m.1lvl = round(colMeans(mPositions.2), 2),
+           m.conj = round(colMeans(mPositions.conj), 2))
+
+
 ##################################################################
 ### lets try an optimisation based approach
 library(car) ## for logit function
@@ -171,8 +176,8 @@ logit.inv = function(p) {exp(p)/(exp(p)+1) }
 mylogpost = function(theta, data){
   ## parameters to track/estimate
   iTheta = logit.inv(theta[grep('theta', names(theta))])
-  iLogAlDivBe = theta[grep('logAlDivBe', names(theta))]
-  iLogAlPlusBe = theta[grep('logAlPlusBe', names(theta))]
+  iAlDivBe = logit.inv(theta[grep('logitAlDivBe', names(theta))])
+  iAlPlusBe = exp(theta[grep('logAlPlusBe', names(theta))])
   
   ## data, binomial
   iSuc = data$success # resp
@@ -184,15 +189,15 @@ mylogpost = function(theta, data){
   # log(alpha/beta) = iLogAlDivBe
   # log(alpha+beta) = iLogAlPlusBe
   # solve them together
-  A = exp(iLogAlDivBe)
-  B = exp(iLogAlPlusBe)
+  A = iAlDivBe
+  B = iAlPlusBe
   iAlpha = B/(1+1/A)
   iBeta = B - iAlpha
   
   # checks on parameters
   if (iAlpha < 0 | iBeta < 0) return(-Inf)
   # write the priors and likelihood
-  lp = sum(dbeta(iTheta, iAlpha, iBeta, log=T)) + 1
+  lp = sum(dbeta(iTheta, iAlpha, iBeta, log=T)) + dbeta(A, 0.5, 0.5, log=T) + dgamma(B, 0.5, 1e-4, log=T)
   lik = sum(dbinom(iSuc, iTotal, iTheta, log=T))
   val = lik + lp
   return(val)
@@ -200,10 +205,14 @@ mylogpost = function(theta, data){
 
 lData = list(success=dfData.2$Hits, trials=dfData.2$AtBats, groupIndex=as.numeric(dfData.2$PriPos))
 ## set starting values
-s1 = logit(lData$success / lData$trials)
+s1 = lData$success / lData$trials
 names(s1) = rep('theta', times=length(s1))
-s2 = c(alpha1=0.5, beta1=0.5)
-start = c(s1, s2)
+l = getalphabeta(mean(s1), var(s1))
+
+## logit(alpha/(alpha+beta)) = log(alpha/beta)
+s2 = c(logit(l['alpha']/sum(l)), log(sum(l)))
+names(s2) = c('logitAlDivBe', 'logAlPlusBe')
+start = c(logit(s1), s2)
 
 ## test function
 mylogpost(start, lData)
@@ -218,7 +227,7 @@ mylaplace = function (logpost, mode, data)
 {
   options(warn = -1)
   fit = optim(mode, logpost, gr = NULL,  
-              control = list(fnscale = -1, maxit=10000), method='Nelder-Mead', data=data)
+              control = list(fnscale = -1, maxit=20000), method='Nelder-Mead', data=data)
   # calculate hessian
   fit$hessian = (hessian(logpost, fit$par, data=data))
   colnames(fit$hessian) = names(mode)
@@ -233,13 +242,28 @@ mylaplace = function (logpost, mode, data)
 
 fit.2 = mylaplace(mylogpost, start, lData)
 
+logit.inv(fit.2$mode[1:10])
+exp(fit.2$mode[11])
+
 ## lets take a sample from this
 ## parameters for the multivariate t density
 tpar = list(m=fit.2$mode, var=fit.2$var*2, df=4)
 ## get a sample directly and using sir (sampling importance resampling with a t proposal density)
 s = sir(mylogpost, tpar, 5000, lData)
-s = logit.inv(s[,1:9])
-colnames(s) = levels(dfData.2$PriPos)
+mPositions.opt = logit.inv(s[,1:9])
+colnames(mPositions.opt) = levels(dfData.2$PriPos)
+
+data.frame(m.2lvl = round(colMeans(mPositions), 2),
+           m.1lvl = round(colMeans(mPositions.2), 2),
+           m.conj = round(colMeans(mPositions.conj), 2),
+           m.opt = round(colMeans(mPositions.opt), 2))
+
+data.frame(m.2lvl = round(apply(mPositions, 2, sd), 5),
+           m.1lvl = round(apply(mPositions.2, 2, sd), 5),
+           m.conj = round(apply(mPositions.conj, 2, sd), 5),
+           m.opt = round(apply(mPositions.opt, 2, sd), 5))
+
+
 
 ### lets compare the results from the 4 different analyses
 p1 = density(mPositions[,'Pitcher'])
@@ -301,7 +325,10 @@ s1 = lData$success / lData$trials
 names(s1) = rep('theta', times=length(s1))
 l = getalphabeta(mean(s1), var(s1))
 
-s2 = c(logAlDivBe=log(l['alpha']/l['beta']), logAlPlusBe=log(sum(l)))
+## logit(alpha/(alpha+beta)) = log(alpha/beta)
+
+s2 = c(logit(l['alpha']/sum(l)), log(sum(l)))
+names(s2) = c('logitAlDivBe', 'logAlPlusBe')
 start = c(logit(s1), s2)
 
 ## test function
