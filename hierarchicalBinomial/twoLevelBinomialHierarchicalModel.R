@@ -171,8 +171,8 @@ logit.inv = function(p) {exp(p)/(exp(p)+1) }
 mylogpost = function(theta, data){
   ## parameters to track/estimate
   iTheta = logit.inv(theta[grep('theta', names(theta))])
-  iAlpha1 = theta[grep('alpha1', names(theta))]
-  iBeta1 = theta[grep('beta1', names(theta))]
+  iLogAlDivBe = theta[grep('logAlDivBe', names(theta))]
+  iLogAlPlusBe = theta[grep('logAlPlusBe', names(theta))]
   
   ## data, binomial
   iSuc = data$success # resp
@@ -180,10 +180,19 @@ mylogpost = function(theta, data){
   groupIndex = data$groupIndex # mapping variable
   iTheta = iTheta[groupIndex]
   
+  ### we solve two equations together to get the values for alpha and beta
+  # log(alpha/beta) = iLogAlDivBe
+  # log(alpha+beta) = iLogAlPlusBe
+  # solve them together
+  A = exp(iLogAlDivBe)
+  B = exp(iLogAlPlusBe)
+  iAlpha = B/(1+1/A)
+  iBeta = B - iAlpha
+  
   # checks on parameters
-  if (any(iAlpha1 < 0) | any(iBeta1 < 0)) return(-Inf)
+  if (iAlpha < 0 | iBeta < 0) return(-Inf)
   # write the priors and likelihood
-  lp = sum(dbeta(iTheta, iAlpha1, iBeta1, log=T)) + 1
+  lp = sum(dbeta(iTheta, iAlpha, iBeta, log=T)) + 1
   lik = sum(dbinom(iSuc, iTotal, iTheta, log=T))
   val = lik + lp
   return(val)
@@ -288,10 +297,12 @@ ivMutations.conj = getFittedTheta(c(l['alpha'], l['beta'], suc, fail))
 ## lets try optimization based approach
 lData = list(success=dfData$success, trials=dfData$trials, groupIndex=as.numeric(dfData$group))
 ## set starting values
-s1 = logit(lData$success / lData$trials)
+s1 = lData$success / lData$trials
 names(s1) = rep('theta', times=length(s1))
-s2 = c(alpha1=0.5, beta1=0.5)
-start = c(s1, s2)
+l = getalphabeta(mean(s1), var(s1))
+
+s2 = c(logAlDivBe=log(l['alpha']/l['beta']), logAlPlusBe=log(sum(l)))
+start = c(logit(s1), s2)
 
 ## test function
 mylogpost(start, lData)
