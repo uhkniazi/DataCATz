@@ -276,12 +276,72 @@ lines(p1, col=2, lwd=2)
 p1 = density(mPositions.conj[,'Pitcher'])
 p1$y = p1$y/max(p1$y)
 lines(p1, col=3, lwd=2)
-p1 = density(s[,'Pitcher'])
+p1 = density(mPositions.opt[,'Pitcher'])
 p1$y = p1$y/max(p1$y)
 lines(p1, col=4, lwd=2)
 
 legend('topleft', legend = c('2 Level', '1 Level', 'Conjugate', 'SIR'), fill=c(1, 2, 3, 4))
 
+
+## utility function for plotting
+getms = function(f){
+  m = mean(f)
+  se = sd(f)
+  m.up = m+1.96*se
+  m.down = m-1.96*se
+  ret= c(m, m.up, m.down)
+  names(ret) = c('m', 'm.up', 'm.down')
+  return(ret)
+}
+
+df = apply(mPositions, 2, getms)
+x = jitter(dfData.2$Hits/dfData.2$AtBats, factor = 10)
+
+## reproduce figure from book [2] 
+par(mfrow=c(1,2))
+plot(x, df['m',], pch=20, xlab=expression(paste('Observed Rate  ',frac(Hits[i],AtBats[i]))), xlim=c(0.243, 0.268), cex.axis=0.5,
+     ylim=c(0.23, 0.28),
+     ylab=expression(paste('Model Estimated  ', theta[i])), main='2 level Hierarchical Model')
+for(l in 1:ncol(df)){
+  lines(x=c(x[l], x[l]), y=df[c(2,3),l], lwd=0.5)
+}
+abline(0, 1)
+
+df = apply(mPositions.2, 2, getms)
+
+plot(x, df['m',], pch=20, xlab=expression(paste('Observed Rate  ',frac(Hits[i],AtBats[i]))), xlim=c(0.243, 0.268), cex.axis=0.5,
+     ylim=c(0.23, 0.28),
+     ylab=expression(paste('Model Estimated  ', theta[i])), main='1 level Hierarchical Model')
+for(l in 1:ncol(df)){
+  lines(x=c(x[l], x[l]), y=df[c(2,3),l], lwd=0.5)
+}
+abline(0, 1)
+
+df = apply(mPositions.conj, 2, getms)
+
+plot(x, df['m',], pch=20, xlab=expression(paste('Observed Rate  ',frac(Hits[i],AtBats[i]))), xlim=c(0.243, 0.268), cex.axis=0.5,
+     ylim=c(0.23, 0.28),
+     ylab=expression(paste('Model Estimated  ', theta[i])), main='Conjugate EBayes Model')
+for(l in 1:ncol(df)){
+  lines(x=c(x[l], x[l]), y=df[c(2,3),l], lwd=0.5)
+}
+abline(0, 1)
+
+df = apply(mPositions.opt, 2, getms)
+
+plot(x, df['m',], pch=20, xlab=expression(paste('Observed Rate  ',frac(Hits[i],AtBats[i]))), xlim=c(0.243, 0.268), cex.axis=0.5,
+     ylim=c(0.23, 0.28),
+     ylab=expression(paste('Model Estimated  ', theta[i])), main='SIR Model')
+for(l in 1:ncol(df)){
+  lines(x=c(x[l], x[l]), y=df[c(2,3),l], lwd=0.5)
+}
+abline(0, 1)
+
+
+legend('topleft', legend = c('Hierarchical', 'EBayes'), fill=c('black', 'red'))
+
+
+##########################################################################################
 ##########################################################################################
 ## application to the mouse data set from [2]
 rm(dfData)
@@ -317,6 +377,80 @@ suc = dfData$success[78]
 fail = dfData$trials[78] - dfData$success[78]
 
 ivMutations.conj = getFittedTheta(c(l['alpha'], l['beta'], suc, fail))
+
+############################ perform on all data
+### try a conjugate, ebayes approach
+nrow(dfData)
+ivThetas.data = dfData$success/dfData$trials
+## get hyperparameters using population data
+l = getalphabeta(mean(ivThetas.data), var(ivThetas.data))
+
+## use the data to calculate success and failures
+suc = dfData$success
+fail = dfData$trials - dfData$success
+trials = dfData$trials
+# put data in matrix form to cycle the function over each row
+m = cbind(l['alpha'], l['beta'], suc, fail)
+
+mMutations.conj = apply(m, 1, getFittedTheta)
+
+data.frame(m.1lvl = round(colMeans(mMutations), 2),
+           m.conj = round(colMeans(mMutations.conj), 2))
+
+data.frame(m.1lvl = round(apply(mMutations, 2, sd), 3),
+           m.conj = round(apply(mMutations.conj, 2, sd), 3))
+
+## utility function for plotting
+getms = function(f){
+  m = mean(f)
+  se = sd(f)
+  m.up = m+1.96*se
+  m.down = m-1.96*se
+  ret= c(m, m.up, m.down)
+  names(ret) = c('m', 'm.up', 'm.down')
+  return(ret)
+}
+
+df = apply(mMutations, 2, getms)
+x = jitter(suc/trials, factor = 10)
+
+## reproduce figure from book [2] 
+plot(x, df['m',], ylim=c(0, 0.42), xlim=c(0, 0.42), pch=20, xlab=expression(paste('Observed Rate  ',frac(Y[i],N[i]))),
+     ylab=expression(paste('Model Estimated  ', theta[i])), main='1 level Hierarchical Model')
+for(l in 1:ncol(df)){
+  lines(x=c(x[l], x[l]), y=df[c(2,3),l], lwd=0.5)
+}
+abline(0, 1)
+
+df = apply(mMutations.conj, 2, getms)
+
+plot(x, df['m',], ylim=c(0, 0.42), xlim=c(0, 0.42), pch=20, xlab=expression(paste('Observed Rate  ',frac(Y[i],N[i]))),
+     ylab=expression(paste('Model Estimated  ', theta[i])), main='EBayes Conjugate Model')
+for(l in 1:ncol(df)){
+  lines(x=c(x[l], x[l]), y=df[c(2,3),l], lwd=0.5)
+}
+abline(0, 1)
+
+### plot both together
+df = apply(mMutations, 2, getms)
+x = jitter(suc/trials, factor = 10)
+
+plot(x, df['m',], ylim=c(0, 0.42), xlim=c(0, 0.42), pch=20, xlab=expression(paste('Observed Rate  ',frac(Y[i],N[i]))),
+     ylab=expression(paste('Model Estimated  ', theta[i])), main='Fits from Models')
+for(l in 1:ncol(df)){
+  lines(x=c(x[l], x[l]), y=df[c(2,3),l], lwd=0.5)
+}
+abline(0, 1)
+
+df = apply(mMutations.conj, 2, getms)
+
+points(x, df['m',], col=2, pch=20)
+for(l in 1:ncol(df)){
+  lines(x=c(x[l], x[l]), y=df[c(2,3),l], lwd=0.5, col=2)
+}
+
+legend('topleft', legend = c('Hierarchical', 'EBayes'), fill=c('black', 'red'))
+
 
 ## lets try optimization based approach
 lData = list(success=dfData$success, trials=dfData$trials, groupIndex=as.numeric(dfData$group))
