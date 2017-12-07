@@ -20,7 +20,7 @@ transformed parameters {
 model {
   AlDivBe ~ beta(0.5, 0.5);
   AlPlusBe ~ gamma(0.5, 1e-4);
-  // distribution for population paremeter with hyperparameters alpha and beta
+  // distribution for paremeter theta with hyperparameters alpha and beta
   theta ~ beta(alpha, beta);
   ////// likelihood
   y ~ binomial(N, theta[NgroupsMap]);
