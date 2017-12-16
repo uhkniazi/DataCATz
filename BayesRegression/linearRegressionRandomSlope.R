@@ -68,7 +68,7 @@ summary(fit.lm)
 # residual se = 2.616
 # a model with uncorrelated slope
 library(lme4)
-fit.lme = lmer(resp ~ 1 + pred + (1 | group) #+ (0 + pred | group)
+fit.lme = lmer(resp ~ 1 + pred + (1 | group) + (0 + pred | group)
                , data=dfData, REML=F)
 summary(fit.lme)
 
@@ -83,13 +83,14 @@ options(mc.cores = parallel::detectCores())
 stanDso = rstan::stan_model(file='BayesRegression/linearRegressionRandomEffectsRandomSlope.stan')
 
 lStanData = list(Ntotal=nrow(dfData), 
-                 Nclusters=nlevels(dfData$group), 
+                 Nclusters=nlevels(dfData$group), Ncol=1,
                  NgroupMap=dfData$groupIndex, X=dfData$pred,
                  y=dfData$resp)
 
 fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, #pars=c('betas', 'sigmaRan', 'sigmaPop', 'rGroupsJitter'),
                     cores=2)
-print(fit.stan, digits=3)
+print(fit.stan, c('slope', 'intercept', 'sigmaPop', 'sigmaRan1', 'sigmaRanSlope1',
+                  'rGroupsSlope', 'rGroupsJitter'), digits=3)
 
 
 ####### now lets write our own model function
