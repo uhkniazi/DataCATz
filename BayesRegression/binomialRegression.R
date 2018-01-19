@@ -17,6 +17,7 @@ data("Contraception")
 
 str(Contraception)
 
+
 ## we plot the data as the author does in this book
 xyplot(ifelse(use == 'Y', 1, 0) ~ age|urban, data = Contraception, groups = livch, lty=1:4, col=1,
        type=c('g', 'smooth'), key = list(text=list(levels(Contraception$livch)), lines=list(lty=1:4),
@@ -40,7 +41,20 @@ xyplot(ifelse(use == 'Y', 1, 0) ~ age|urban, data = Contraception, groups = chil
                                          columns=2, cex=0.8),
        xlab='Age', ylab='Contraception Use', main=list(label='Contraception use Given Urban', cex=0.8))
 
-## we should perhaps also use an interaction term between age and number of children, as the slopes and interceptrs
+########################### analytical calculation and meaning of regression coefficient
+fit.0 = glm(use ~ children, data=Contraception, family = binomial(link='logit'))
+summary(fit.0)
+
+## contingency table
+mCont = as.matrix(table(Contraception$use, Contraception$children))
+dimnames(mCont) = list(c('UseN', 'UseY'), c('ChildN', 'ChildY'))
+
+iMarginal.use = rowSums(mCont)
+iMarginal.child = colSums(mCont)
+
+
+
+## we should perhaps also use an interaction term between age and number of children, as the slopes and intercepts
 ## in cases with children are different to those without children.
 
 ## lets fit a model using the binomial glm without random effects
@@ -93,6 +107,8 @@ pairs(s, pch=20)
 fit.2$sir = s
 
 library(rstan)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
 stanDso = rstan::stan_model(file='BayesRegression/binomialRegression.stan')
 
 lStanData = list(Ntotal=length(lData$resp), Ncol=ncol(lData$mModMatrix), X=lData$mModMatrix,
