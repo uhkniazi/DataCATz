@@ -45,6 +45,15 @@ xyplot(ifelse(use == 'Y', 1, 0) ~ age|urban, data = Contraception, groups = chil
 fit.0 = glm(use ~ children, data=Contraception, family = binomial(link='logit'))
 summary(fit.0)
 
+## intercept = log odds of contraception=Y given children=N
+## convert to probability using logit inverse
+plogis(-1.09) ## compare with snippet 2
+
+## log odds of contraception=Y given children=Y (we have switched conditional class)
+## add intercept and coefficient for children=Y
+round(sum(coef(fit.0)), 2) ## compare with snippet 1
+plogis(sum(coef(fit.0)))
+
 ## contingency table
 mCont = as.matrix(table(Contraception$use, Contraception$children))
 dimnames(mCont) = list(c('UseN', 'UseY'), c('ChildN', 'ChildY'))
@@ -60,7 +69,6 @@ iMarginal.child = colSums(mCont)
 ## lets fit a model using the binomial glm without random effects
 fit.1 = glm(use ~ age + I(age^2) + urban + children, data=Contraception, family = binomial(link='logit'))
 summary(fit.1)
-
 
 logit.inv = function(p) {exp(p)/(exp(p)+1) }
 
@@ -146,6 +154,8 @@ lines(density(s1[,4]), col=2)
 plot(density(s2[,5]), col=1, main='childrenY')
 lines(density(s1[,5]), col=2)
 
+plot.new()
+legend('center', legend = c('Stan', 'SIR'), fill=c('black', 'red'))
 
 ### calculate model fits
 ## first write the log predictive density function
@@ -162,14 +172,21 @@ lpd = function(theta, data){
   return(sum(dbinom(resp, 1, iFitted, log=T)))
 }
 
+fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('betas', 'mu'))
+
+s2 = extract(fit.stan)$betas
+fitted = extract(fit.stan)$mu
 ## averages of posterior from stan sample
 post = apply(s2, 2, mean)
 
 # AIC
 iAIC = (lpd(post, lData) - 5) * -2
+iAIC
 AIC(fit.1)
+# calculate it directly using fitted samples
+(sum(dbinom(lData$resp, 1, colMeans(fitted), log=T)) - 5) * -2
 
-i = sample(1:10000, size = 1000, replace = F)
+i = sample(1:5000, size = 1000, replace = F)
 ## get a distribution of observed log predictive density
 s = s2[i,]
 lpdSample = sapply(1:1000, function(x) lpd(s[x,], lData))
@@ -179,18 +196,28 @@ max(lpdSample) - mean(lpdSample)
 # The mean of the posterior distribution of the log predictive density and the difference
 # between the mean and the maximum is close to the value of 5/2 that would
 # be predicted from asymptotic theory, given that 5 parameters are being estimated. [Gelman 2013]
+## calculate this directly
+m = fitted[i,]
+l = sapply(1:1000, function(x) sum(dbinom(lData$resp, 1, m[x,], log=T)))
+summary(l)
+max(l) - mean(l)
 
-## calculate WAIC
-## DIC 
+## calculate ELPD and DIC 
 ## pDIC are the effective number of parameters
 ## 2 * [lpd(Expectation(theta)) - Expectation(lpd(Sample of thetas from posterior))]
 # calculate E(lpd(theta))
-eLPD = mean(sapply(1:10000, function(x) lpd(s2[x,], lData)))
+eLPD = mean(sapply(1:5000, function(x) lpd(s2[x,], lData)))
 # calculate lpd(E(theta)) and pDIC
 pDIC = 2 *(lpd(post, lData) - eLPD)
 iDIC = (lpd(post, lData) - pDIC) * -2
-# calculate ELPD
 
+## calculate directly using fitted values
+e = mean(sapply(1:5000, function(x) sum(dbinom(lData$resp, 1, fitted[x,], log=T))))
+d = 2 * (sum(dbinom(lData$resp, 1, colMeans(fitted), log=T)) - e)
+i = (sum(dbinom(lData$resp, 1, colMeans(fitted), log=T)) - d) * -2
+
+
+## calculate WAIC
 ## calculate one data point at a time
 ## log pointwise predictive density
 lppd = function(theta, data){
@@ -216,8 +243,15 @@ pWAIC1 = 2 * (ilppd - eLPD)
 
 iWAIC = -2 * (ilppd - pWAIC1)
 
+## calculate using fitted values
+i = sum(log(sapply(seq_along(lData$resp), function(x) {
+  mean(dbinom(lData$resp[x], 1, fitted[,x]))
+})))
 
 
+################################################################################################################
+######## second blog with random effects included
+################################################################################################################
 
 #######################################################################
 ########### lets fit a more complex random effects model
