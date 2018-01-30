@@ -94,15 +94,15 @@ library(rstan)
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
 
-stanDso = rstan::stan_model(file='tResponse1RandomEffectsNoFixed.stan')
+stanDso = rstan::stan_model(file='normResponse1RandomEffectsNoFixed.stan')
 
 ## calculate hyperparameters for variance of coefficients
 l = gammaShRaFromModeSD(sd(dfData$values), 2*sd(dfData$values))
-
 ## set initial values
+ran = ranef(fit.lme1)
+ran = ran$Coef
 initf = function(chain_id = 1) {
-  gm = tapply(dfData$values, dfData$Coef, mean) - mean(dfData$values)
-  list(betas = mean(dfData$values), sigmaRan1 = sd(gm), sigmaPop=sd(dfData$values), nu=4, rGroupsJitter1=gm)
+  list(betas = 5.4, sigmaRan1 = 2, sigmaPop=0.5, rGroupsJitter1=ran)
 }
 
 ### try a t model without mixture
@@ -114,21 +114,21 @@ lStanData = list(Ntotal=nrow(dfData), Nclusters1=nlevels(dfData$Coef),
                  y=dfData$values, 
                  gammaShape=l$shape, gammaRate=l$rate)
 
-fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=2, 
+fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=4, 
                     pars=c('betas', 'sigmaRan1', #'sigmaRan2',
-                           'nu', 'sigmaPop', #'mu', 
+                           'sigmaPop', #'mu', 
                            'rGroupsJitter1'), #'rGroupsJitter2'),
-                    cores=2, init=initf)#, control=list(adapt_delta=0.99, max_treedepth = 15))
-print(fit.stan, c('betas', 'sigmaRan1', 'sigmaPop', 'nu'), digits=3)
+                    cores=4, init=initf)#, control=list(adapt_delta=0.99, max_treedepth = 15))
+print(fit.stan, c('betas', 'sigmaRan1', 'sigmaPop'), digits=3)
 
 
 ## get the coefficient of interest - Modules in our case from the random coefficients section
-mModules = extract(fit.stan)$rGroupsJitter1
-dim(mModules)
+mCoef = extract(fit.stan)$rGroupsJitter1
+dim(mCoef)
 ## get the intercept at population level
 iIntercept = as.numeric(extract(fit.stan)$betas)
 ## add the intercept to each random effect variable, to get the full coefficient
-mModules = sweep(mModules, 1, iIntercept, '+')
+mCoef = sweep(mCoef, 1, iIntercept, '+')
 
 ## function to calculate statistics for differences between coefficients
 getDifference = function(ivData, ivBaseline){
@@ -143,7 +143,7 @@ getDifference = function(ivData, ivBaseline){
 }
 
 ## split the data into the comparisons required
-d = data.frame(cols=1:ncol(mModules), mods=levels(dfData$Coef))
+d = data.frame(cols=1:ncol(mCoef), mods=levels(dfData$Coef))
 ## split this factor into sub factors
 f = strsplit(as.character(d$mods), ':')
 d = cbind(d, do.call(rbind, f))
@@ -155,18 +155,92 @@ d$split = factor(d$ind)
 l = tapply(d$cols, d$split, FUN = function(x, base='12', deflection='2') {
   c = x
   names(c) = as.character(d$fBatch[c])
-  dif = getDifference(ivData = mModules[,c[deflection]], ivBaseline = mModules[,c[base]])
-  r = data.frame(ind= as.character(d$ind[c[base]]), coef.base=mean(mModules[,c[base]]), 
-                 coef.deflection=mean(mModules[,c[deflection]]), zscore=dif$z, pvalue=dif$p)
+  dif = getDifference(ivData = mCoef[,c[deflection]], ivBaseline = mCoef[,c[base]])
+  r = data.frame(ind= as.character(d$ind[c[base]]), coef.base=mean(mCoef[,c[base]]), 
+                 coef.deflection=mean(mCoef[,c[deflection]]), zscore=dif$z, pvalue=dif$p)
   r$difference = r$coef.deflection - r$coef.base
   #return(format(r, digi=3))
   return(r)
 })
 
 dfResults = do.call(rbind, l)
-dfResults$p.adj = format(p.adjust(dfResults$pvalue, method='BH'), digi=3)
+dfResults$adj.P.Val = p.adjust(dfResults$pvalue, method='BH')
+
+### compare the results from the 3 models
+# dfResults = dfResults[order(dfResults$pvalue, decreasing = F), ]
+# dfLimmma.2 = dfLimmma.2[order(dfLimmma.2$P.Value, decreasing = F), ]
+dfResults$logFC = dfResults$difference
+dfResults$P.Value = dfResults$pvalue
+dfLimmma.2$SYMBOL = as.character(rownames(dfLimmma.2))
+dfResults$SYMBOL = as.character(rownames(dfResults))
+
+## produce the plots 
+f_plotVolcano(dfLimmma.2, 'limma 2M vs 12M')
+f_plotVolcano(dfResults, 'Stan 2M vs 12M')
+
+m = tapply(dfData$values, dfData$ind, mean)
+i = match(rownames(dfResults), names(m))
+m = m[i]
+identical(names(m), rownames(dfResults))
+plotMeanFC(m, dfResults, 0.1, 'Stan 2M vs 12M')
+
+m = tapply(dfData$values, dfData$ind, mean)
+i = match(rownames(dfLimmma.2), names(m))
+m = m[i]
+m = m[!is.na(m)]
+i = match(names(m), rownames(dfLimmma.2))
+dfLimmma.2 = dfLimmma.2[i,]
+identical(names(m), rownames(dfLimmma.2))
+plotMeanFC(m, dfLimmma.2, 0.1, 'limma 2M vs 12M')
+
+
+i = match(rownames(dfResults), rownames(dfLimmma.2))
+dfLimmma.2 = dfLimmma.2[i,]
+i = match(rownames(dfLimmma.2), rownames(dfResults))
+dfResults = dfResults[i,]
+identical(rownames(dfResults), rownames(dfLimmma.2))
+
+plot(dfResults$pvalue, dfLimmma.2$P.Value, pch=20, cex=0.6, col='grey')
+plot(dfResults$adj.P.Val, dfLimmma.2$adj.P.Val, pch=20, cex=0.6, col='grey')
+df = cbind(stan=dfResults$pvalue, limma=dfLimmma.2$P.Value)
+
 write.csv(dfResults, file='temp/stan.csv', row.names = F)
 
+################# t model
+stanDso = rstan::stan_model(file='tResponse1RandomEffectsNoFixed.stan')
+
+## calculate hyperparameters for variance of coefficients
+l = gammaShRaFromModeSD(sd(dfData$values), 2*sd(dfData$values))
+
+## set initial values
+# initf = function(chain_id = 1) {
+#   gm = tapply(dfData$values, dfData$Coef, mean) - mean(dfData$values)
+#   list(betas = mean(dfData$values), sigmaRan1 = sd(gm), sigmaPop=sd(dfData$values), nu=4, rGroupsJitter1=gm)
+# }
+## set initial values
+ran = ranef(fit.lme1)
+ran = ran$Coef
+initf = function(chain_id = 1) {
+  list(betas = 5.4, sigmaRan1 = 2, sigmaPop=0.5, rGroupsJitter1=ran)
+}
+
+
+
+### try a t model without mixture
+lStanData = list(Ntotal=nrow(dfData), Nclusters1=nlevels(dfData$Coef),
+                 #Nclusters2=nlevels(dfData$Patient.ID),
+                 NgroupMap1=as.numeric(dfData$Coef),
+                 #NgroupMap2=as.numeric(dfData$Patient.ID),
+                 Ncol=1,
+                 y=dfData$values,
+                 gammaShape=l$shape, gammaRate=l$rate)
+
+fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=2,
+                    pars=c('betas', 'sigmaRan1', #'sigmaRan2',
+                           'nu', 'sigmaPop', #'mu',
+                           'rGroupsJitter1'), #'rGroupsJitter2'),
+                    cores=2, init=initf)#, control=list(adapt_delta=0.99, max_treedepth = 15))
+print(fit.stan, c('betas', 'sigmaRan1', 'sigmaPop', 'nu'), digits=3)
 
 
 
