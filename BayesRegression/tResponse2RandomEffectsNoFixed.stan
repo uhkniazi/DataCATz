@@ -33,7 +33,7 @@ model {
   sigmaRan1 ~ gamma(gammaShape, gammaRate);
   sigmaRan2 ~ gamma(gammaShape, gammaRate);
   sigmaPop ~ gamma(gammaShape, gammaRate);
-  betas ~ normal(intercept, intercept_sd*5);
+  betas ~ normal(intercept, intercept_sd);
   // random effects sample
   rGroupsJitter1 ~ normal(0, sigmaRan1);
   rGroupsJitter2 ~ normal(0, sigmaRan2);

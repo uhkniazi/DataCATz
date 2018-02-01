@@ -50,6 +50,8 @@ plotMeanFC = function(m, dat, p.cut, title){
 }
 
 lData = f_LoadObject(file.choose())
+i = sample(1:nrow(lData$data), size = 500, replace = F)
+lData$data = lData$data[i,]
 m = lData$data
 dim(m)
 
@@ -68,7 +70,7 @@ library(limma)
 
 #fBatch = lData$cov1; fAdjust=lData$cov2;
 design = model.matrix(~ lData$cov1 + lData$cov2)
-colnames(design) = levels(lData$cov1)
+#colnames(design) = levels(lData$cov1)
 head(design)
 
 fit = lmFit(lData$data, design)
@@ -101,7 +103,7 @@ ran = ranef(fit.lme1)
 r1 = ran$Coef
 r2 = ran$Coef.adj
 initf = function(chain_id = 1) {
-  list(sigmaRan1 = 2, sigmaPop=1, rGroupsJitter1=r1, rGroupsJitter2=r2)
+  list(sigmaRan1 = 2, sigmaRan2=2, sigmaPop=1, rGroupsJitter1=r1, rGroupsJitter2=r2)
 }
 
 ### try a t model without mixture
@@ -112,23 +114,23 @@ lStanData = list(Ntotal=nrow(dfData), Nclusters1=nlevels(dfData$Coef),
                  Ncol=1, 
                  y=dfData$values, 
                  gammaShape=l$shape, gammaRate=l$rate,
-                 intercept = mean(dfData$values), intercept_sd= sd(dfData$values))
+                 intercept = mean(dfData$values), intercept_sd= sd(dfData$values)*3)
 
-fit.stan = sampling(stanDso, data=lStanData, iter=500, chains=2, 
+fit.stan = sampling(stanDso, data=lStanData, iter=500, chains=4, 
                     pars=c('sigmaRan1', 'sigmaRan2', 'betas',
                            'sigmaPop', 'mu', 
                            'rGroupsJitter1', 'rGroupsJitter2'),
-                    cores=2, init=initf)#, control=list(adapt_delta=0.99, max_treedepth = 15))
+                    cores=4, init=initf)#, control=list(adapt_delta=0.99, max_treedepth = 15))
 print(fit.stan, c('betas', 'sigmaRan1', 'sigmaRan2', 'sigmaPop'), digits=3)
-
-
+traceplot(fit.stan, 'betas')
+traceplot(fit.stan, 'sigmaRan2')
 ## get the coefficient of interest - Modules in our case from the random coefficients section
 mCoef = extract(fit.stan)$rGroupsJitter1
 dim(mCoef)
 # ## get the intercept at population level
-# iIntercept = as.numeric(extract(fit.stan)$betas)
-# ## add the intercept to each random effect variable, to get the full coefficient
-# mCoef = sweep(mCoef, 1, iIntercept, '+')
+iIntercept = as.numeric(extract(fit.stan)$betas)
+## add the intercept to each random effect variable, to get the full coefficient
+mCoef = sweep(mCoef, 1, iIntercept, '+')
 
 ## function to calculate statistics for differences between coefficients
 getDifference = function(ivData, ivBaseline){
@@ -201,13 +203,13 @@ dfResults = dfResults[i,]
 identical(rownames(dfResults), rownames(dfLimmma.2))
 
 plot(dfResults$pvalue, dfLimmma.2$P.Value, pch=20, cex=0.6, col='grey')
-plot(dfResults$adj.P.Val, dfLimmma.2$adj.P.Val, pch=20, cex=0.6, col='grey')
+plot(dfResults$logFC, dfLimmma.2$logFC, pch=20, cex=0.6, col='grey')
 df = cbind(stan=dfResults$pvalue, limma=dfLimmma.2$P.Value)
 
 write.csv(dfResults, file='temp/stan.csv', row.names = F)
 
 ################# t model
-stanDso = rstan::stan_model(file='tResponse1RandomEffectsNoFixed.stan')
+stanDso = rstan::stan_model(file='tResponse2RandomEffectsNoFixed.stan')
 
 ## calculate hyperparameters for variance of coefficients
 l = gammaShRaFromModeSD(sd(dfData$values), 2*sd(dfData$values))
@@ -219,82 +221,80 @@ l = gammaShRaFromModeSD(sd(dfData$values), 2*sd(dfData$values))
 # }
 ## set initial values
 ran = ranef(fit.lme1)
-ran = ran$Coef
+r1 = ran$Coef
+r2 = ran$Coef.adj
 initf = function(chain_id = 1) {
-  list(betas = 5.4, sigmaRan1 = 2, sigmaPop=0.5, rGroupsJitter1=ran)
+  list(sigmaRan1 = 2, sigmaRan2=2, sigmaPop=1, rGroupsJitter1=r1, rGroupsJitter2=r2, nu=4)
 }
-
-
 
 ### try a t model without mixture
 lStanData = list(Ntotal=nrow(dfData), Nclusters1=nlevels(dfData$Coef),
-                 #Nclusters2=nlevels(dfData$Patient.ID),
+                 Nclusters2=nlevels(dfData$Coef.adj),
                  NgroupMap1=as.numeric(dfData$Coef),
-                 #NgroupMap2=as.numeric(dfData$Patient.ID),
-                 Ncol=1,
-                 y=dfData$values,
-                 gammaShape=l$shape, gammaRate=l$rate)
+                 NgroupMap2=as.numeric(dfData$Coef.adj),
+                 Ncol=1, 
+                 y=dfData$values, 
+                 gammaShape=l$shape, gammaRate=l$rate,
+                 intercept = mean(dfData$values), intercept_sd= sd(dfData$values)*3)
 
-fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=2,
-                    pars=c('betas', 'sigmaRan1', #'sigmaRan2',
-                           'nu', 'sigmaPop', #'mu',
-                           'rGroupsJitter1'), #'rGroupsJitter2'),
+fit.stan = sampling(stanDso, data=lStanData, iter=500, chains=2,
+                    pars=c('betas', 'sigmaRan1', 'sigmaRan2',
+                           'nu', 'sigmaPop', 'mu',
+                           'rGroupsJitter1', 'rGroupsJitter2'),
                     cores=2, init=initf)#, control=list(adapt_delta=0.99, max_treedepth = 15))
-print(fit.stan, c('betas', 'sigmaRan1', 'sigmaPop', 'nu'), digits=3)
+print(fit.stan, c('betas', 'sigmaRan1', 'sigmaRan2', 'sigmaPop', 'nu'), digits=3)
 
 
+## model checks
+m = extract(fit.stan, 'mu')
+names(m)
+dim(m$mu)
+fitted = apply(m$mu, 2, mean)
 
+plot(dfData$values, fitted, pch=20, cex=0.5)
+plot(dfData$values, dfData$values - fitted, pch=20, cex=0.5)
+iResid = (dfData$values - fitted)
 
-# ## model checks
-# m = extract(fit.stan, 'mu')
-# names(m)
-# dim(m$mu)
-# fitted = apply(m$mu, 2, mean)
-# 
-# plot(dfData$values, fitted, pch=20, cex=0.5)
-# plot(dfData$values, dfData$values - fitted, pch=20, cex=0.5)
-# iResid = (dfData$values - fitted)
-# 
-# par(mfrow=c(1,2))
-# plot(fitted, iResid, pch=20, cex=0.5, main='t model')
-# lines(lowess(fitted, iResid), col=2, lwd=2)
-# 
-# plot(predict(fit.lme1), resid(fit.lme1), pch=20, cex=0.5, main='normal')
-# lines(lowess(predict(fit.lme1), resid(fit.lme1)), col=2, lwd=2)
-# 
-# plot(fitted, predict(fit.lme1), pch=20, cex=0.5)
-# 
-# ### plot the posterior predictive values
-# m = extract(fit.stan, c('mu', 'nu', 'sigmaPop'))
-# i = sample(1:5000, 5000)
-# muSample = m$mu[i,]
-# nuSample = m$nu[i]
-# sigSample = m$sigmaPop[i]
-# 
-# ## t sampling functions
-# dt_ls = function(x, df, mu, a) 1/a * dt((x - mu)/a, df)
-# rt_ls <- function(n, df, mu, a) rt(n,df)*a + mu
-# 
-# ## use point-wise predictive approach to sample a new value from this data
-# ivResp = dfData$values
-# mDraws = matrix(NA, nrow = length(ivResp), ncol=2000)
-# 
-# # rppd = function(index){
-# #   f = muSample[,index]
-# #   return(rt_ls(length(f), nuSample, f, sigSample))
-# # }
-# 
-# for (i in 1:ncol(mDraws)){
-#   mDraws[,i] = rt_ls(length(ivResp), nuSample[i], muSample[i,], sigSample[i])
+par(mfrow=c(1,2))
+plot(fitted, iResid, pch=20, cex=0.5, main='t model')
+lines(lowess(fitted, iResid), col=2, lwd=2)
+
+plot(predict(fit.lme1), resid(fit.lme1), pch=20, cex=0.5, main='normal')
+lines(lowess(predict(fit.lme1), resid(fit.lme1)), col=2, lwd=2)
+
+plot(fitted, predict(fit.lme1), pch=20, cex=0.5)
+
+### plot the posterior predictive values
+m = extract(fit.stan, c('mu', 'nu', 'sigmaPop'))
+i = sample(1:500, 500)
+muSample = m$mu[i,]
+nuSample = m$nu[i]
+sigSample = m$sigmaPop[i]
+
+## t sampling functions
+dt_ls = function(x, df, mu, a) 1/a * dt((x - mu)/a, df)
+rt_ls <- function(n, df, mu, a) rt(n,df)*a + mu
+
+## use point-wise predictive approach to sample a new value from this data
+ivResp = dfData$values
+mDraws = matrix(NA, nrow = length(ivResp), ncol=200)
+
+# rppd = function(index){
+#   f = muSample[,index]
+#   return(rt_ls(length(f), nuSample, f, sigSample))
 # }
-# 
-# # 
-# # temp = sapply(1:length(ivResp), function(x) rppd(x))
-# # mDraws = t(temp)
-# 
-# yresp = density(ivResp)
-# plot(yresp, xlab='', main='Fitted distribution', ylab='density', lwd=2)#, ylim=c(0, 1))
-# temp = apply(mDraws, 2, function(x) {x = density(x)
-# #x$y = x$y/max(x$y)
-# lines(x, col='red', lwd=0.6)
-# })
+
+for (i in 1:ncol(mDraws)){
+  mDraws[,i] = rt_ls(length(ivResp), nuSample[i], muSample[i,], sigSample[i])
+}
+
+#
+# temp = sapply(1:length(ivResp), function(x) rppd(x))
+# mDraws = t(temp)
+
+yresp = density(ivResp)
+plot(yresp, xlab='', main='Fitted distribution', ylab='density', lwd=2)#, ylim=c(0, 1))
+temp = apply(mDraws, 2, function(x) {x = density(x)
+#x$y = x$y/max(x$y)
+lines(x, col='red', lwd=0.6)
+})
