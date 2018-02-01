@@ -51,20 +51,23 @@ plotMeanFC = function(m, dat, p.cut, title){
 
 lData = f_LoadObject(file.choose())
 m = lData$data
+dim(m)
 
 dfData = data.frame(t(m))
 dfData = stack(dfData)
 dfData$fBatch = lData$cov1
 dfData$fAdjust = lData$cov2
 dfData$Coef = factor(dfData$fBatch:dfData$ind)
-dfData = dfData[order(dfData$Coef), ]
+dfData$Coef.adj = factor(dfData$fAdjust:dfData$ind)
+dfData = droplevels.data.frame(dfData)
+dfData = dfData[order(dfData$Coef, dfData$Coef.adj), ]
 
 
 ###### fit a model using limma
 library(limma)
 
 #fBatch = lData$cov1; fAdjust=lData$cov2;
-design = model.matrix(~ lData$cov1)
+design = model.matrix(~ lData$cov1 + lData$cov2)
 colnames(design) = levels(lData$cov1)
 head(design)
 
@@ -75,16 +78,11 @@ dfLimmma.2 = topTable(fit, coef=2, adjust='BH', number = Inf)
 dfLimmma.0 = topTable(fit, coef=3, adjust='BH', number = Inf)
 
 
-
-
-
-
-
-
 # #### fit mixed effect model
 library(lme4)
-fit.lme1 = lmer(values ~ 1 + (1 | Coef), data=dfData, REML=F)
+fit.lme1 = lmer(values ~ 1 + (1 | Coef) + (1 | Coef.adj), data=dfData, REML=F)
 summary(fit.lme1)
+ran = ranef(fit.lme1, condVar=T)
 
 plot(fitted(fit.lme1), resid(fit.lme1), pch=20, cex=0.7)
 lines(lowess(fitted(fit.lme1), resid(fit.lme1)), col=2)
@@ -94,41 +92,43 @@ library(rstan)
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
 
-stanDso = rstan::stan_model(file='normResponse1RandomEffectsNoFixed.stan')
+stanDso = rstan::stan_model(file='normResponse2RandomEffectsNoFixed.stan')
 
 ## calculate hyperparameters for variance of coefficients
 l = gammaShRaFromModeSD(sd(dfData$values), 2*sd(dfData$values))
-## set initial values
+# ## set initial values
 ran = ranef(fit.lme1)
-ran = ran$Coef
+r1 = ran$Coef
+r2 = ran$Coef.adj
 initf = function(chain_id = 1) {
-  list(betas = 5.4, sigmaRan1 = 2, sigmaPop=0.5, rGroupsJitter1=ran)
+  list(sigmaRan1 = 2, sigmaPop=1, rGroupsJitter1=r1, rGroupsJitter2=r2)
 }
 
 ### try a t model without mixture
 lStanData = list(Ntotal=nrow(dfData), Nclusters1=nlevels(dfData$Coef),
-                 #Nclusters2=nlevels(dfData$Patient.ID),
+                 Nclusters2=nlevels(dfData$Coef.adj),
                  NgroupMap1=as.numeric(dfData$Coef),
-                 #NgroupMap2=as.numeric(dfData$Patient.ID),
+                 NgroupMap2=as.numeric(dfData$Coef.adj),
                  Ncol=1, 
                  y=dfData$values, 
-                 gammaShape=l$shape, gammaRate=l$rate)
+                 gammaShape=l$shape, gammaRate=l$rate,
+                 intercept = mean(dfData$values), intercept_sd= sd(dfData$values))
 
-fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=4, 
-                    pars=c('betas', 'sigmaRan1', #'sigmaRan2',
-                           'sigmaPop', #'mu', 
-                           'rGroupsJitter1'), #'rGroupsJitter2'),
-                    cores=4, init=initf)#, control=list(adapt_delta=0.99, max_treedepth = 15))
-print(fit.stan, c('betas', 'sigmaRan1', 'sigmaPop'), digits=3)
+fit.stan = sampling(stanDso, data=lStanData, iter=500, chains=2, 
+                    pars=c('sigmaRan1', 'sigmaRan2', 'betas',
+                           'sigmaPop', 'mu', 
+                           'rGroupsJitter1', 'rGroupsJitter2'),
+                    cores=2, init=initf)#, control=list(adapt_delta=0.99, max_treedepth = 15))
+print(fit.stan, c('betas', 'sigmaRan1', 'sigmaRan2', 'sigmaPop'), digits=3)
 
 
 ## get the coefficient of interest - Modules in our case from the random coefficients section
 mCoef = extract(fit.stan)$rGroupsJitter1
 dim(mCoef)
-## get the intercept at population level
-iIntercept = as.numeric(extract(fit.stan)$betas)
-## add the intercept to each random effect variable, to get the full coefficient
-mCoef = sweep(mCoef, 1, iIntercept, '+')
+# ## get the intercept at population level
+# iIntercept = as.numeric(extract(fit.stan)$betas)
+# ## add the intercept to each random effect variable, to get the full coefficient
+# mCoef = sweep(mCoef, 1, iIntercept, '+')
 
 ## function to calculate statistics for differences between coefficients
 getDifference = function(ivData, ivBaseline){
