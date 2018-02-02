@@ -50,8 +50,8 @@ plotMeanFC = function(m, dat, p.cut, title){
 }
 
 lData = f_LoadObject(file.choose())
-i = sample(1:nrow(lData$data), size = 500, replace = F)
-lData$data = lData$data[i,]
+# i = sample(1:nrow(lData$data), size = 500, replace = F)
+# lData$data = lData$data[i,]
 m = lData$data
 dim(m)
 
@@ -84,7 +84,7 @@ dfLimmma.0 = topTable(fit, coef=3, adjust='BH', number = Inf)
 library(lme4)
 fit.lme1 = lmer(values ~ 1 + (1 | Coef) + (1 | Coef.adj), data=dfData, REML=F)
 summary(fit.lme1)
-ran = ranef(fit.lme1, condVar=T)
+ran = ranef(fit.lme1, condVar=F)
 
 plot(fitted(fit.lme1), resid(fit.lme1), pch=20, cex=0.7)
 lines(lowess(fitted(fit.lme1), resid(fit.lme1)), col=2)
@@ -118,12 +118,16 @@ lStanData = list(Ntotal=nrow(dfData), Nclusters1=nlevels(dfData$Coef),
 
 fit.stan = sampling(stanDso, data=lStanData, iter=500, chains=4, 
                     pars=c('sigmaRan1', 'sigmaRan2', 'betas',
-                           'sigmaPop', 'mu', 
+                           'sigmaPop', #'mu', 
                            'rGroupsJitter1', 'rGroupsJitter2'),
                     cores=4, init=initf)#, control=list(adapt_delta=0.99, max_treedepth = 15))
+save(fit.stan, file='temp/fit.stan.norm.rds')
+gc(reset = T)
+
 print(fit.stan, c('betas', 'sigmaRan1', 'sigmaRan2', 'sigmaPop'), digits=3)
 traceplot(fit.stan, 'betas')
 traceplot(fit.stan, 'sigmaRan2')
+print(fit.stan, 'rGroupsJitter1')
 ## get the coefficient of interest - Modules in our case from the random coefficients section
 mCoef = extract(fit.stan)$rGroupsJitter1
 dim(mCoef)
@@ -177,8 +181,8 @@ dfLimmma.2$SYMBOL = as.character(rownames(dfLimmma.2))
 dfResults$SYMBOL = as.character(rownames(dfResults))
 
 ## produce the plots 
-f_plotVolcano(dfLimmma.2, 'limma 2M vs 12M')
-f_plotVolcano(dfResults, 'Stan 2M vs 12M')
+f_plotVolcano(dfLimmma.2, 'limma 2M vs 12M', fc.lim = c(-2, 2))
+f_plotVolcano(dfResults, 'Stan 2M vs 12M', fc.lim=c(-2, 2))
 
 m = tapply(dfData$values, dfData$ind, mean)
 i = match(rownames(dfResults), names(m))
@@ -202,11 +206,14 @@ i = match(rownames(dfLimmma.2), rownames(dfResults))
 dfResults = dfResults[i,]
 identical(rownames(dfResults), rownames(dfLimmma.2))
 
-plot(dfResults$pvalue, dfLimmma.2$P.Value, pch=20, cex=0.6, col='grey')
-plot(dfResults$logFC, dfLimmma.2$logFC, pch=20, cex=0.6, col='grey')
+plot(dfResults$pvalue, dfLimmma.2$P.Value, pch=20, cex=0.6, col='grey', main='P Values 2M vs 12M', xlab='Stan', ylab='Limma')
+abline(lm(dfLimmma.2$P.Value ~ dfResults$pvalue), col=2, lwd=2)
+plot(dfResults$logFC, dfLimmma.2$logFC, pch=20, cex=0.8, col='grey', main='Log FC 2M vs 12M', xlab='Stan', ylab='Limma')
+abline(lm(dfLimmma.2$logFC ~ dfResults$logFC), col=2, lwd=1)
 df = cbind(stan=dfResults$pvalue, limma=dfLimmma.2$P.Value)
 
 write.csv(dfResults, file='temp/stan.csv', row.names = F)
+write.csv(dfLimmma.2, file='temp/limma.csv', row.names = F)
 
 ################# t model
 stanDso = rstan::stan_model(file='tResponse2RandomEffectsNoFixed.stan')
