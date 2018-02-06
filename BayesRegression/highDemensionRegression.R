@@ -49,6 +49,7 @@ plotMeanFC = function(m, dat, p.cut, title){
   plot(m, dat$logFC, col=col, pch=20, main=title, xlab='log Mean', ylab='logFC', ylim=c(-2, 2), cex=0.6)
 }
 
+setwd('BayesRegression/')
 lData = f_LoadObject(file.choose())
 # i = sample(1:nrow(lData$data), size = 500, replace = F)
 # lData$data = lData$data[i,]
@@ -182,7 +183,7 @@ dfResults$SYMBOL = as.character(rownames(dfResults))
 
 ## produce the plots 
 f_plotVolcano(dfLimmma.2, 'limma 2M vs 12M', fc.lim = c(-2, 2))
-f_plotVolcano(dfResults, 'Stan 2M vs 12M', fc.lim=c(-2, 2))
+f_plotVolcano(dfResults, 'Stan 2M vs 12M', fc.lim=c(-2.5, 2.5))
 
 m = tapply(dfData$values, dfData$ind, mean)
 i = match(rownames(dfResults), names(m))
@@ -212,7 +213,7 @@ plot(dfResults$logFC, dfLimmma.2$logFC, pch=20, cex=0.8, col='grey', main='Log F
 abline(lm(dfLimmma.2$logFC ~ dfResults$logFC), col=2, lwd=1)
 df = cbind(stan=dfResults$pvalue, limma=dfLimmma.2$P.Value)
 
-write.csv(dfResults, file='temp/stan.csv', row.names = F)
+write.csv(dfResults, file='temp/stan_t.csv', row.names = F)
 write.csv(dfLimmma.2, file='temp/limma.csv', row.names = F)
 
 ################# t model
@@ -244,64 +245,12 @@ lStanData = list(Ntotal=nrow(dfData), Nclusters1=nlevels(dfData$Coef),
                  gammaShape=l$shape, gammaRate=l$rate,
                  intercept = mean(dfData$values), intercept_sd= sd(dfData$values)*3)
 
-fit.stan = sampling(stanDso, data=lStanData, iter=500, chains=2,
+fit.stan = sampling(stanDso, data=lStanData, iter=300, chains=4,
                     pars=c('betas', 'sigmaRan1', 'sigmaRan2',
-                           'nu', 'sigmaPop', 'mu',
+                           'nu', 'sigmaPop', #'mu',
                            'rGroupsJitter1', 'rGroupsJitter2'),
-                    cores=2, init=initf)#, control=list(adapt_delta=0.99, max_treedepth = 15))
+                    cores=4, init=initf, control=list(adapt_delta=0.99, max_treedepth = 12))
+save(fit.stan, file='temp/fit.stan.tdis_2.rds')
 print(fit.stan, c('betas', 'sigmaRan1', 'sigmaRan2', 'sigmaPop', 'nu'), digits=3)
 
 
-## model checks
-m = extract(fit.stan, 'mu')
-names(m)
-dim(m$mu)
-fitted = apply(m$mu, 2, mean)
-
-plot(dfData$values, fitted, pch=20, cex=0.5)
-plot(dfData$values, dfData$values - fitted, pch=20, cex=0.5)
-iResid = (dfData$values - fitted)
-
-par(mfrow=c(1,2))
-plot(fitted, iResid, pch=20, cex=0.5, main='t model')
-lines(lowess(fitted, iResid), col=2, lwd=2)
-
-plot(predict(fit.lme1), resid(fit.lme1), pch=20, cex=0.5, main='normal')
-lines(lowess(predict(fit.lme1), resid(fit.lme1)), col=2, lwd=2)
-
-plot(fitted, predict(fit.lme1), pch=20, cex=0.5)
-
-### plot the posterior predictive values
-m = extract(fit.stan, c('mu', 'nu', 'sigmaPop'))
-i = sample(1:500, 500)
-muSample = m$mu[i,]
-nuSample = m$nu[i]
-sigSample = m$sigmaPop[i]
-
-## t sampling functions
-dt_ls = function(x, df, mu, a) 1/a * dt((x - mu)/a, df)
-rt_ls <- function(n, df, mu, a) rt(n,df)*a + mu
-
-## use point-wise predictive approach to sample a new value from this data
-ivResp = dfData$values
-mDraws = matrix(NA, nrow = length(ivResp), ncol=200)
-
-# rppd = function(index){
-#   f = muSample[,index]
-#   return(rt_ls(length(f), nuSample, f, sigSample))
-# }
-
-for (i in 1:ncol(mDraws)){
-  mDraws[,i] = rt_ls(length(ivResp), nuSample[i], muSample[i,], sigSample[i])
-}
-
-#
-# temp = sapply(1:length(ivResp), function(x) rppd(x))
-# mDraws = t(temp)
-
-yresp = density(ivResp)
-plot(yresp, xlab='', main='Fitted distribution', ylab='density', lwd=2)#, ylim=c(0, 1))
-temp = apply(mDraws, 2, function(x) {x = density(x)
-#x$y = x$y/max(x$y)
-lines(x, col='red', lwd=0.6)
-})
