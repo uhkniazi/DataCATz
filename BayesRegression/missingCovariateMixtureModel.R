@@ -90,6 +90,66 @@ colnames(mCoef) = levels(dfData$fGroups)
 
 getDifference(mCoef[,'1'], mCoef[,'0'])
 
+#################### second model with different regression coefficients for each component
+stanDso = rstan::stan_model(file='BayesRegression/normResponseFiniteMixture1RandomEffectSeparateCoefficients.stan')
+
+## calculate hyperparameters for variance of coefficients
+l = gammaShRaFromModeSD(sd(dfData$x), 2*sd(dfData$x))
+
+lStanData = list(Ntotal=nrow(dfData), Nclusters1=nlevels(dfData$fGroups),
+                 NgroupMap1=as.numeric(dfData$fGroups), 
+                 y=dfData$x, iMixtures=2, 
+                 gammaShape=l$shape, gammaRate=l$rate, 
+                 iIntercepts=c(10, 15))
+
+fit.stan = sampling(stanDso, data=lStanData, iter=2000, chains=2, 
+                    pars=c('sigmaRan1_1', 'sigmaRan1_2', 'sigma',
+                           'rGroupsJitter1_1', 'rGroupsJitter1_2', 'mu', 'iMixWeights'),
+                    cores=2, control=list(adapt_delta=0.99, max_treedepth = 12))
+
+print(fit.stan, c('sigmaRan1', 'sigma', 'mu', 'iMixWeights'), digits=3)
+
+traceplot(fit.stan, c('sigmaRan1', 'sigma', 'mu', 'iMixWeights'))
+
+## check if labelling degeneracy has occured
+## see here: http://mc-stan.org/users/documentation/case-studies/identifying_mixture_models.html
+params1 = as.data.frame(extract(fit.stan, permuted=FALSE)[,1,])
+params2 = as.data.frame(extract(fit.stan, permuted=FALSE)[,2,])
+
+## check if the means from different chains overlap
+## Labeling Degeneracy by Enforcing an Ordering
+par(mfrow=c(2,2))
+plot(params1$`mu[1]`, params1$`mu[2]`, pch=20, col=2)
+plot(params2$`mu[1]`, params2$`mu[2]`, pch=20, col=3)
+
+plot(params1$`mu[1]`, params1$`mu[2]`, pch=20, col=2)
+points(params2$`mu[1]`, params2$`mu[2]`, pch=20, col=3)
+
+## extract the coefficients from the model
+mCoef = extract(fit.stan)$rGroupsJitter1
+dim(mCoef)
+
+## function to calculate statistics for differences between coefficients
+getDifference = function(ivData, ivBaseline){
+  stopifnot(length(ivData) == length(ivBaseline))
+  # get the difference vector
+  d = ivData - ivBaseline
+  # get the z value
+  z = mean(d)/sd(d)
+  # get 2 sided p-value
+  p = pnorm(-abs(mean(d)/sd(d)))*2
+  return(list(d=mean(d), z=z, p=p))
+}
+
+colnames(mCoef) = levels(dfData$fGroups)
+
+getDifference(mCoef[,'1'], mCoef[,'0'])
+
+
+
+
+
+
 
 ################# find the batch using kmeans
 km = kmeans(dfData$x, centers = 2)
