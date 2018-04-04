@@ -304,8 +304,8 @@ mylogpost = function(theta, data){
   return(val)
 }
 
-dfData = data.frame(dfData[ , CVariableSelection.ReduceModel.getMinModel(oVar.sub2, 1)])
-colnames(dfData) = CVariableSelection.ReduceModel.getMinModel(oVar.sub2, 1)
+dfData = data.frame(dfData[ , CVariableSelection.ReduceModel.getMinModel(oVar.sub2, 7)])
+colnames(dfData) = CVariableSelection.ReduceModel.getMinModel(oVar.sub2, 7)
 dim(dfData)
 head(dfData)
 dfData = data.frame(dfData, fGroups=fGroups.test)
@@ -343,7 +343,7 @@ initf = function(chain_id = 1) {
 }
 
 
-fit.stan = sampling(stanDso, data=lStanData, iter=3000, chains=3, pars=c('tau', 'betas2'), init=initf, 
+fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=3, pars=c('tau', 'betas2'), init=initf, 
                     control=list(adapt_delta=0.99, max_treedepth = 11))
 
 print(fit.stan, c('betas2', 'tau'))
@@ -353,7 +353,7 @@ traceplot(fit.stan, 'tau')
 ## get the coefficient of interest - Modules in our case from the random coefficients section
 mCoef = extract(fit.stan)$betas2
 dim(mCoef)
-colnames(mCoef) = c('Intercept', CVariableSelection.ReduceModel.getMinModel(oVar.sub2, 1))
+colnames(mCoef) = c('Intercept', CVariableSelection.ReduceModel.getMinModel(oVar.sub2, 7))
 pairs(mCoef, pch=20)
 
 library(lattice)
@@ -387,8 +387,8 @@ plot(perf.death, add=T, col='red')
 legend('bottomright', legend = c('Alive', 'Dead'), col = 1:2, lty=1)
 
 fPredict = rep('reject', times=length(ivPredict))
-fPredict[ivPredict >= 0.73062000] = 'ATB'
-fPredict[ivPredict <= (1-0.94426070)] = 'Other'
+fPredict[ivPredict >= 0.67031745] = 'ATB'
+fPredict[ivPredict <= (1-0.78145975)] = 'Other'
 table(fPredict, fGroups.test)
 
 ## draw these accept reject points
