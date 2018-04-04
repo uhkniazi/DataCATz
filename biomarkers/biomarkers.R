@@ -81,8 +81,10 @@ initf = function(chain_id = 1) {
 }
 
 
-fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=2, pars=c('tau', 'betas2'), init=initf, 
+fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=4, pars=c('tau', 'betas2'), init=initf, 
                     control=list(adapt_delta=0.99, max_treedepth = 11))
+
+save(fit.stan, file='fit.stan.binom.rds')
 
 print(fit.stan, c('betas2', 'tau'))
 print(fit.stan, 'tau')
@@ -115,7 +117,8 @@ m = abs(m)
 m = sort(m, decreasing = T)
 cvTopGenes.binomial = names(m)[1:30] #names(m[m > 0.25])
 cvTopGenes.binomial[11] = "HLA-DPA1"
-### test performance of both models
+
+### test performance of both results, from Random Forest and Binomial Regression
 dfRF = CVariableSelection.RandomForest.getVariables(oVar.r)
 # select the top 30 variables
 cvTopGenes = rownames(dfRF)[1:30]
@@ -123,29 +126,91 @@ cvTopGenes = rownames(dfRF)[1:30]
 # use the top 30 genes to find top combinations of genes
 dfData = data.frame(t(lData.train$data[cvTopGenes, ]))
 
-oVar.sub = CVariableSelection.ReduceModel(dfData, fGroups, boot.num = 30)
+oVar.sub = CVariableSelection.ReduceModel(dfData, fGroups, boot.num = 100)
 
 # plot the number of variables vs average error rate
 plot.var.selection(oVar.sub)
 
-## load the test data
+# use the top 30 genes to find top combinations of genes
+dfData = data.frame(t(lData.train$data[cvTopGenes.binomial, ]))
+
+oVar.sub2 = CVariableSelection.ReduceModel(dfData, fGroups, boot.num = 100)
+
+# plot the number of variables vs average error rate
+plot.var.selection(oVar.sub2)
+
+# print variable combinations
+for (i in 1:7){
+  cvTopGenes.sub = CVariableSelection.ReduceModel.getMinModel(oVar.sub, i)
+  cat('Variable Count', i, paste(cvTopGenes.sub), '\n')
+  #print(cvTopGenes.sub)
+}
+
+for (i in 1:7){
+  cvTopGenes.sub = CVariableSelection.ReduceModel.getMinModel(oVar.sub2, i)
+  cat('Variable Count', i, paste(cvTopGenes.sub), '\n')
+  #print(cvTopGenes.sub)
+}
+
+### try a combination of top genes from both models
+cvTopGenes.comb = NULL;
+for (i in 1:10){
+  cvTopGenes.comb = append(cvTopGenes.comb, CVariableSelection.ReduceModel.getMinModel(oVar.sub, i)) 
+  cat(i)
+}
+cvTopGenes.comb = unique(cvTopGenes.comb)
+
+for (i in 1:10){
+  cvTopGenes.comb = append(cvTopGenes.comb, CVariableSelection.ReduceModel.getMinModel(oVar.sub2, i))
+  cat(i)
+}
+
+cvTopGenes.comb = unique(cvTopGenes.comb)
+length(cvTopGenes.comb)
+
+# use these combined variables to find top combinations of genes
+dfData = data.frame(t(lData.train$data[cvTopGenes.comb, ]))
+
+oVar.subComb = CVariableSelection.ReduceModel(dfData, fGroups, boot.num = 100)
+
+# plot the number of variables vs average error rate
+plot.var.selection(oVar.subComb)
+
+for (i in 1:7){
+  cvTopGenes.sub = CVariableSelection.ReduceModel.getMinModel(oVar.subComb, i)
+  cat('Variable Count', i, paste(cvTopGenes.sub), '\n')
+  #print(cvTopGenes.sub)
+}
+
+
+## load the test data and try these combinations
 lData.test = f_LoadObject('GSE37250_normalised_subset_test.RList')
 fGroups.test = rep('ATB', times=length(lData.test$grouping))
 fGroups.test[lData.test$grouping != 'ATB'] = 'Other'
 fGroups.test = factor(fGroups.test, levels = c('Other', 'ATB'))
 table(fGroups.test)
 table(lData.test$grouping)
+
+dfData = data.frame(t(lData.test$data))
+dim(dfData)
+
+## subset the data first into test and training tests
+test = sample(1:length(fGroups.test), size = 0.30*length(fGroups.test), replace = F)
+table(fGroups.test[test])
+table(fGroups.test[-test])
+
 ## 10 fold nested cross validation with various variable combinations
 par(mfrow=c(2,2))
-# try models of various sizes with CV
-for (i in 2:6){
-  cvTopGenes.sub = CVariableSelection.ReduceModel.getMinModel(oVar.sub, i)
-  dfData.train = data.frame(t(lData.train$data[cvTopGenes.sub, ]))
+for (i in 1:8){
+  cvTopGenes.sub = CVariableSelection.ReduceModel.getMinModel(oVar.subComb, i)
+  dfData.train = data.frame(dfData[-test ,cvTopGenes.sub])
+  colnames(dfData.train) = cvTopGenes.sub
   
-  dfData.test = data.frame(t(lData.test$data[cvTopGenes.sub, ]))
+  dfData.test = data.frame(dfData[test ,cvTopGenes.sub])
+  colnames(dfData.test) = cvTopGenes.sub
   
-  oCV = CCrossValidation.LDA(test.dat = dfData.test, train.dat = dfData.train, test.groups = fGroups.test,
-                             train.groups = fGroups, level.predict = 'ATB', boot.num = 50)
+  oCV = CCrossValidation.LDA(test.dat = dfData.test, train.dat = dfData.train, test.groups = fGroups.test[test],
+                             train.groups = fGroups.test[-test], level.predict = 'ATB', boot.num = 100)
   
   plot.cv.performance(oCV)
   # print variable names and 95% confidence interval for AUC
@@ -155,6 +220,7 @@ for (i in 2:6){
   print(cvTopGenes.sub)
   print(signif(quantile(x, probs = c(0.025, 0.975)), 2))
 }
+
 
 
 
