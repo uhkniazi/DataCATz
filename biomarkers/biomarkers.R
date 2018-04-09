@@ -383,7 +383,7 @@ initf = function(chain_id = 1) {
 
 ## give initial values function to stan
 # l = lapply(1, initf)
-fit.stan = sampling(stanDso, data=lStanData, iter=4000, chains=4, init=initf, cores=4)
+fit.stan = sampling(stanDso, data=lStanData, iter=4000, chains=4, cores=4, init=initf)
 print(fit.stan, digi=3)
 traceplot(fit.stan)
 
@@ -415,7 +415,7 @@ colnames(mStan) = c('mu1', 'mu2', 'sigma1', 'sigma2', 'mix1', 'mix2')
 dim(mStan)
 ## get a sample for this distribution
 ########## simulate 200 test quantities
-mDraws = matrix(NA, nrow = length(NPreg$yn), ncol=200)
+mDraws = matrix(NA, nrow = length(ivPredict), ncol=200)
 
 for (i in 1:200){
   p = sample(1:nrow(mStan), size = 1)
@@ -426,11 +426,13 @@ for (i in 1:200){
     return(ind * rnorm(1, mStan[p, 'mu1'], mStan[p, 'sigma1']) + 
              (1-ind) * rnorm(1, mStan[p, 'mu2'], mStan[p, 'sigma2']))
   }
-  mDraws[,i] = replicate(length(NPreg$yn), sam())
+  mDraws[,i] = replicate(length(ivPredict), sam())
 }
 
 mDraws.normMix = mDraws
 
+yresp = density(ivPredict)
+yresp$y = yresp$y/max(yresp$y)
 plot(yresp, xlab='', main='Fitted distribution', ylab='scaled density', lwd=2)
 temp = apply(mDraws, 2, function(x) {x = density(x)
 x$y = x$y/max(x$y)
