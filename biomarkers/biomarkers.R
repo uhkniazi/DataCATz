@@ -267,7 +267,7 @@ for (i in c(1,7)){
 #dev.off(dev.cur())
 
 ###################################
-### test a 1 variable model with reject and accept regions
+### test N variable model with reject and accept regions
 ##################################
 library(LearnBayes)
 logit.inv = function(p) {exp(p)/(exp(p)+1) }
@@ -304,8 +304,8 @@ mylogpost = function(theta, data){
   return(val)
 }
 
-dfData = data.frame(dfData[ , CVariableSelection.ReduceModel.getMinModel(oVar.sub2, 7)])
-colnames(dfData) = CVariableSelection.ReduceModel.getMinModel(oVar.sub2, 7)
+dfData = data.frame(dfData[ , CVariableSelection.ReduceModel.getMinModel(oVar.subComb, 4)])
+colnames(dfData) = CVariableSelection.ReduceModel.getMinModel(oVar.subComb, 4)
 dim(dfData)
 head(dfData)
 dfData = data.frame(dfData, fGroups=fGroups.test)
@@ -353,7 +353,7 @@ traceplot(fit.stan, 'tau')
 ## get the coefficient of interest - Modules in our case from the random coefficients section
 mCoef = extract(fit.stan)$betas2
 dim(mCoef)
-colnames(mCoef) = c('Intercept', CVariableSelection.ReduceModel.getMinModel(oVar.sub2, 7))
+colnames(mCoef) = c('Intercept', CVariableSelection.ReduceModel.getMinModel(oVar.subComb, 4))
 pairs(mCoef, pch=20)
 
 library(lattice)
@@ -363,9 +363,93 @@ str(dfData.new)
 ## create model matrix
 X = as.matrix(cbind(rep(1, times=nrow(dfData.new)), dfData.new[,colnames(mCoef)[-1]]))
 colnames(X) = colnames(mCoef)
-ivPredict = mypred(colMeans(mCoef), list(mModMatrix=X))
+ivPredict = mypred(colMeans(mCoef), list(mModMatrix=X))[,1]
 xyplot(ivPredict ~ fGroups.test, xlab='Actual Group', ylab='Predicted Probability of Being ATB (1)')
 xyplot(ivPredict ~ lData.test$grouping, xlab='Actual Group', ylab='Predicted Probability of Being ATB (1)')
+densityplot(~ ivPredict, data=dfData, type='n')
+densityplot(~ ivPredict | fGroups, data=dfData, type='n')
+densityplot(~ logit(ivPredict), data=dfData)
+
+################################ section for mixture model
+stanDso = rstan::stan_model(file='normResponseFiniteMixture.stan')
+
+## take a subset of the data
+lStanData = list(Ntotal=length(ivPredict), y=ivPredict, iMixtures=2)
+
+## give initial values if you want, look at the density plot 
+initf = function(chain_id = 1) {
+  list(mu = c(0.3, 0.7), sigma = c(0.1, 0.3), iMixWeights=c(0.5, 0.5))
+} 
+
+## give initial values function to stan
+# l = lapply(1, initf)
+fit.stan = sampling(stanDso, data=lStanData, iter=4000, chains=4, init=initf, cores=4)
+print(fit.stan, digi=3)
+traceplot(fit.stan)
+
+## check if labelling degeneracy has occured
+## see here: http://mc-stan.org/users/documentation/case-studies/identifying_mixture_models.html
+params1 = as.data.frame(extract(fit.stan, permuted=FALSE)[,1,])
+params2 = as.data.frame(extract(fit.stan, permuted=FALSE)[,2,])
+params3 = as.data.frame(extract(fit.stan, permuted=FALSE)[,3,])
+params4 = as.data.frame(extract(fit.stan, permuted=FALSE)[,4,])
+
+## check if the means from different chains overlap
+## Labeling Degeneracy by Enforcing an Ordering
+par(mfrow=c(2,2))
+plot(params1$`mu[1]`, params1$`mu[2]`, pch=20, col=2)
+plot(params2$`mu[1]`, params2$`mu[2]`, pch=20, col=3)
+plot(params3$`mu[1]`, params3$`mu[2]`, pch=20, col=4)
+plot(params4$`mu[1]`, params4$`mu[2]`, pch=20, col=5)
+
+par(mfrow=c(1,1))
+plot(params1$`mu[1]`, params1$`mu[2]`, pch=20, col=2)
+points(params2$`mu[1]`, params2$`mu[2]`, pch=20, col=3)
+points(params3$`mu[1]`, params3$`mu[2]`, pch=20, col=4)
+points(params4$`mu[1]`, params4$`mu[2]`, pch=20, col=5)
+
+############# extract the mcmc sample values from stan
+mStan = do.call(cbind, extract(fit.stan))
+mStan = mStan[,-(ncol(mStan))]
+colnames(mStan) = c('mu1', 'mu2', 'sigma1', 'sigma2', 'mix1', 'mix2')
+dim(mStan)
+## get a sample for this distribution
+########## simulate 200 test quantities
+mDraws = matrix(NA, nrow = length(NPreg$yn), ncol=200)
+
+for (i in 1:200){
+  p = sample(1:nrow(mStan), size = 1)
+  mix = mean(mStan[,'mix1'])
+  ## this will take a sample from a normal mixture distribution
+  sam = function() {
+    ind = rbinom(1, 1, prob = mix)
+    return(ind * rnorm(1, mStan[p, 'mu1'], mStan[p, 'sigma1']) + 
+             (1-ind) * rnorm(1, mStan[p, 'mu2'], mStan[p, 'sigma2']))
+  }
+  mDraws[,i] = replicate(length(NPreg$yn), sam())
+}
+
+mDraws.normMix = mDraws
+
+plot(yresp, xlab='', main='Fitted distribution', ylab='scaled density', lwd=2)
+temp = apply(mDraws, 2, function(x) {x = density(x)
+x$y = x$y/max(x$y)
+lines(x, col='darkgrey', lwd=0.6)
+})
+lines(yresp, lwd=2)
+
+################################ end section
+
+
+
+
+
+
+
+
+
+
+
 ## choose an appropriate cutoff for accept and reject regions
 ivTruth = fGroups.test == 'ATB'
 
