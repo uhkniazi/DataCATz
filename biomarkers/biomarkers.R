@@ -182,7 +182,240 @@ for (i in 1:7){
   #print(cvTopGenes.sub)
 }
 
+################################################# binomial regression with mixture model section
+library(LearnBayes)
+logit.inv = function(p) {exp(p)/(exp(p)+1) }
+dfData = data.frame(t(lData.train$data[cvTopGenes.comb, ]))
 
+## binomial prediction
+mypred = function(theta, data){
+  betas = theta # vector of betas i.e. regression coefficients for population
+  ## data
+  mModMatrix = data$mModMatrix
+  # calculate fitted value
+  iFitted = mModMatrix %*% betas
+  # using logit link so use inverse logit
+  iFitted = logit.inv(iFitted)
+  return(iFitted)
+}
+
+## lets write a custom glm using a bayesian approach
+## write the log posterior function
+mylogpost = function(theta, data){
+  ## parameters to track/estimate
+  betas = theta # vector of betas i.e. regression coefficients for population
+  ## data
+  resp = data$resp # resp
+  mModMatrix = data$mModMatrix
+  
+  # calculate fitted value
+  iFitted = mModMatrix %*% betas
+  # using logit link so use inverse logit
+  iFitted = logit.inv(iFitted)
+  # write the priors and likelihood
+  lp = dnorm(betas[1], 0, 10, log=T) + sum(dnorm(betas[-1], 0, 10, log=T))
+  lik = sum(dbinom(resp, 1, iFitted, log=T))
+  val = lik + lp
+  return(val)
+}
+
+dfData = data.frame(dfData[ , CVariableSelection.ReduceModel.getMinModel(oVar.subComb, 7)])
+colnames(dfData) = CVariableSelection.ReduceModel.getMinModel(oVar.subComb, 7)
+dim(dfData)
+head(dfData)
+dfData = data.frame(dfData, fGroups=fGroups)
+
+lData = list(resp=ifelse(dfData$fGroups == 'ATB', 1, 0), mModMatrix=model.matrix(fGroups ~ 1 + ., data=dfData))
+start = c(rep(0, times=ncol(lData$mModMatrix)))
+mylogpost(start, lData)
+
+fit.2 = laplace(mylogpost, start, lData)
+fit.2
+
+fit.1 = glm(fGroups ~ ., data=dfData, family='binomial')
+data.frame(coef(fit.1), fit.2$mode)
+# se = sqrt(diag(fit.2$var))
+# summary(fit.1)
+# ## lets take a sample from this
+# # parameters for the multivariate t density
+# tpar = list(m=fit.2$mode, var=fit.2$var*2, df=4)
+# ## get a sample directly and using sir (sampling importance resampling with a t proposal density)
+# s = sir(mylogpost, tpar, 5000, lData)
+# colnames(s) = colnames(lData$mModMatrix)
+# apply(s, 2, mean)
+# apply(s, 2, sd)
+# pairs(s, pch=20)
+# fit.2$sir = s
+
+stanDso = rstan::stan_model(file='binomialRegressionSharedCoeffVariance.stan')
+
+lStanData = list(Ntotal=length(lData$resp), Ncol=ncol(lData$mModMatrix), X=lData$mModMatrix,
+                 y=lData$resp)
+
+## give initial values
+initf = function(chain_id = 1) {
+  list(betas=rep(0, times=ncol(lStanData$X)), tau=0.5)
+}
+
+
+fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=3, pars=c('tau', 'betas2'), init=initf, 
+                    control=list(adapt_delta=0.99, max_treedepth = 11))
+
+print(fit.stan, c('betas2', 'tau'))
+print(fit.stan, 'tau')
+traceplot(fit.stan, 'tau')
+
+## get the coefficient of interest - Modules in our case from the random coefficients section
+mCoef = extract(fit.stan)$betas2
+dim(mCoef)
+colnames(mCoef) = c('Intercept', CVariableSelection.ReduceModel.getMinModel(oVar.subComb, 7))
+pairs(mCoef, pch=20)
+
+library(lattice)
+library(car)
+## get the predicted values
+dfData.new = dfData
+str(dfData.new)
+## create model matrix
+X = as.matrix(cbind(rep(1, times=nrow(dfData.new)), dfData.new[,colnames(mCoef)[-1]]))
+colnames(X) = colnames(mCoef)
+ivPredict = mypred(colMeans(mCoef), list(mModMatrix=X))[,1]
+xyplot(ivPredict ~ fGroups, xlab='Actual Group', ylab='Predicted Probability of Being ATB (1)')
+xyplot(ivPredict ~ lData.train$grouping, xlab='Actual Group', ylab='Predicted Probability of Being ATB (1)')
+densityplot(~ ivPredict, data=dfData, type='n')
+densityplot(~ ivPredict | fGroups, data=dfData, type='n')
+
+densityplot(~ logit(ivPredict), data=dfData)
+
+################################ section for mixture model
+stanDso = rstan::stan_model(file='normResponseFiniteMixture.stan')
+
+## take a subset of the data
+lStanData = list(Ntotal=length(ivPredict), y=ivPredict, iMixtures=2)
+
+## give initial values if you want, look at the density plot 
+initf = function(chain_id = 1) {
+  list(mu = c(0.1, 0.8), sigma = c(0.1, 0.2), iMixWeights=c(0.5, 0.5))
+} 
+
+## give initial values function to stan
+# l = lapply(1, initf)
+fit.stan = sampling(stanDso, data=lStanData, iter=4000, chains=4, cores=4, init=initf)
+print(fit.stan, digi=3)
+traceplot(fit.stan)
+
+## check if labelling degeneracy has occured
+## see here: http://mc-stan.org/users/documentation/case-studies/identifying_mixture_models.html
+params1 = as.data.frame(extract(fit.stan, permuted=FALSE)[,1,])
+params2 = as.data.frame(extract(fit.stan, permuted=FALSE)[,2,])
+params3 = as.data.frame(extract(fit.stan, permuted=FALSE)[,3,])
+params4 = as.data.frame(extract(fit.stan, permuted=FALSE)[,4,])
+
+## check if the means from different chains overlap
+## Labeling Degeneracy by Enforcing an Ordering
+par(mfrow=c(2,2))
+plot(params1$`mu[1]`, params1$`mu[2]`, pch=20, col=2)
+plot(params2$`mu[1]`, params2$`mu[2]`, pch=20, col=3)
+plot(params3$`mu[1]`, params3$`mu[2]`, pch=20, col=4)
+plot(params4$`mu[1]`, params4$`mu[2]`, pch=20, col=5)
+
+par(mfrow=c(1,1))
+plot(params1$`mu[1]`, params1$`mu[2]`, pch=20, col=2)
+points(params2$`mu[1]`, params2$`mu[2]`, pch=20, col=3)
+points(params3$`mu[1]`, params3$`mu[2]`, pch=20, col=4)
+points(params4$`mu[1]`, params4$`mu[2]`, pch=20, col=5)
+
+############# extract the mcmc sample values from stan
+mStan = do.call(cbind, extract(fit.stan))
+mStan = mStan[,-(ncol(mStan))]
+colnames(mStan) = c('mu1', 'mu2', 'sigma1', 'sigma2', 'mix1', 'mix2')
+dim(mStan)
+## get a sample for this distribution
+########## simulate 200 test quantities
+mDraws = matrix(NA, nrow = length(ivPredict), ncol=200)
+
+for (i in 1:200){
+  p = sample(1:nrow(mStan), size = 1)
+  mix = mean(mStan[,'mix1'])
+  ## this will take a sample from a normal mixture distribution
+  sam = function() {
+    ind = rbinom(1, 1, prob = mix)
+    return(ind * rnorm(1, mStan[p, 'mu1'], mStan[p, 'sigma1']) + 
+             (1-ind) * rnorm(1, mStan[p, 'mu2'], mStan[p, 'sigma2']))
+  }
+  mDraws[,i] = replicate(length(ivPredict), sam())
+}
+
+mDraws.normMix = mDraws
+
+yresp = density(ivPredict)
+yresp$y = yresp$y/max(yresp$y)
+plot(yresp, xlab='', main='Fitted distribution', ylab='scaled density', lwd=2)
+temp = apply(mDraws, 2, function(x) {x = density(x)
+x$y = x$y/max(x$y)
+lines(x, col='darkgrey', lwd=0.6)
+})
+lines(yresp, lwd=2)
+
+print(fit.stan)
+
+range(ivPredict)
+temp = rnorm(1000, 0.02, 0.02)
+sapply(seq(0, 1, length.out = 10), function(x) sum(temp >= x)/1000)
+round(pnorm(seq(0, 1, length.out = 10), 0.02, 0.02, lower.tail = F), 3)
+round(seq(0, 1, length.out = 10), 3)
+
+## you can add a joint p-value
+## choose an appropriate cutoff for accept and reject regions
+ivTruth = fGroups == 'ATB'
+
+p = prediction(ivPredict, ivTruth)
+perf.alive = performance(p, 'tpr', 'fpr')
+dfPerf.alive = data.frame(c=perf.alive@alpha.values, t=perf.alive@y.values[[1]], f=perf.alive@x.values[[1]], 
+                          r=perf.alive@y.values[[1]]/perf.alive@x.values[[1]])
+colnames(dfPerf.alive) = c('c', 't', 'f', 'r')
+plot(perf.alive)
+
+## create posterior smatter lines
+grid = seq(0, 1, length.out = 100)
+f_getSmatterLines = function(m, s, g){
+  return(pnorm(g, m, s, lower.tail = F))
+}
+x = f_getSmatterLines(0.76, 0.33, grid)
+y = f_getSmatterLines(0.02, 0.02, grid)
+lines(y, x, col=2)
+
+for (i in 1:200){
+  p = sample(1:nrow(mStan), size = 1)
+  x = pnorm(grid, mStan[p, 'mu1'], mStan[p, 'sigma1'], lower.tail = F) 
+  y = pnorm(grid, mStan[p, 'mu2'], mStan[p, 'sigma2'], lower.tail=F)
+  lines(x, y, col=2, lwd=0.6)
+}
+
+################################ end section
+
+
+
+
+
+
+
+
+
+
+
+## choose an appropriate cutoff for accept and reject regions
+ivTruth = fGroups.test == 'ATB'
+
+p = prediction(ivPredict, ivTruth)
+perf.alive = performance(p, 'tpr', 'fpr')
+dfPerf.alive = data.frame(c=perf.alive@alpha.values, t=perf.alive@y.values[[1]], f=perf.alive@x.values[[1]], 
+                          r=perf.alive@y.values[[1]]/perf.alive@x.values[[1]])
+colnames(dfPerf.alive) = c('c', 't', 'f', 'r')
+
+
+
+############################################ Test data set
 ## load the test data and try these combinations
 lData.test = f_LoadObject('GSE37250_normalised_subset_test.RList')
 fGroups.test = rep('ATB', times=length(lData.test$grouping))
@@ -439,6 +672,16 @@ x$y = x$y/max(x$y)
 lines(x, col='darkgrey', lwd=0.6)
 })
 lines(yresp, lwd=2)
+
+print(fit.stan)
+
+range(ivPredict)
+temp = rnorm(1000, -0.80, 0.44)
+sapply(seq(-1.7, 4, length.out = 10), function(x) sum(temp >= x)/1000)
+round(pnorm(seq(-1.7, 4, length.out = 10), -0.80, 0.44, lower.tail = F), 3)
+round(seq(-1.7, 4, length.out = 10), 3)
+
+## you can add a joint p-value
 
 ################################ end section
 
