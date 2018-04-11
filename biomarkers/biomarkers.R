@@ -286,16 +286,17 @@ densityplot(~ ivPredict, data=dfData, type='n')
 densityplot(~ ivPredict | fGroups, data=dfData, type='n')
 
 densityplot(~ logit(ivPredict), data=dfData)
-
+xyplot(logit(ivPredict) ~ lData.train$grouping, xlab='Actual Group', ylab='Predicted Probability of Being ATB (1)')
+ivPredict = logit(ivPredict)
 ################################ section for mixture model
-stanDso = rstan::stan_model(file='normResponseFiniteMixture.stan')
+stanDso = rstan::stan_model(file='normResponseFiniteMixture_2.stan')
 
 ## take a subset of the data
 lStanData = list(Ntotal=length(ivPredict), y=ivPredict, iMixtures=2)
 
 ## give initial values if you want, look at the density plot 
 initf = function(chain_id = 1) {
-  list(mu = c(0.1, 0.8), sigma = c(0.1, 0.2), iMixWeights=c(0.5, 0.5))
+  list(mu = c(-5, 5), sigma = c(1, 1), iMixWeights=c(0.5, 0.5))
 } 
 
 ## give initial values function to stan
@@ -360,10 +361,10 @@ lines(yresp, lwd=2)
 print(fit.stan)
 
 range(ivPredict)
-temp = rnorm(1000, 0.02, 0.02)
-sapply(seq(0, 1, length.out = 10), function(x) sum(temp >= x)/1000)
-round(pnorm(seq(0, 1, length.out = 10), 0.02, 0.02, lower.tail = F), 3)
-round(seq(0, 1, length.out = 10), 3)
+# temp = rnorm(1000, 0.02, 0.02)
+# sapply(seq(0, 1, length.out = 10), function(x) sum(temp >= x)/1000)
+# round(pnorm(seq(0, 1, length.out = 10), 0.02, 0.02, lower.tail = F), 3)
+# round(seq(0, 1, length.out = 10), 3)
 
 ## you can add a joint p-value
 ## choose an appropriate cutoff for accept and reject regions
@@ -377,7 +378,7 @@ colnames(dfPerf.alive) = c('c', 't', 'f', 'r')
 plot(perf.alive)
 
 ## create posterior smatter lines
-grid = seq(0, 1, length.out = 100)
+grid = seq(-10, 11.5, length.out = 100)
 f_getSmatterLines = function(m, s, g){
   return(pnorm(g, m, s, lower.tail = F))
 }
@@ -389,8 +390,17 @@ for (i in 1:200){
   p = sample(1:nrow(mStan), size = 1)
   x = pnorm(grid, mStan[p, 'mu1'], mStan[p, 'sigma1'], lower.tail = F) 
   y = pnorm(grid, mStan[p, 'mu2'], mStan[p, 'sigma2'], lower.tail=F)
-  lines(x, y, col=2, lwd=0.6)
+  lines(x, y, col='lightgrey', lwd=0.6)
 }
+
+plot(perf.alive, add=T)
+
+### check the p-values from the model to select a cutoff point to reduce false positive rate
+### i.e. to test the class at certain cutoff of the score and then declare it as false match
+### the others will go for rejection category
+### see gelman page 19 for such a calibration method.
+
+
 
 ################################ end section
 
