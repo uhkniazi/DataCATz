@@ -183,6 +183,10 @@ for (i in 1:7){
 }
 
 ################################################# binomial regression with mixture model section
+################ fit a binomial model on the chosen model size based on previous results
+## this can be another classifier as well e.g. LDA. Using this model check how is the performance 
+## and using this make some calibration curves to select decision boundary
+
 library(LearnBayes)
 logit.inv = function(p) {exp(p)/(exp(p)+1) }
 dfData = data.frame(t(lData.train$data[cvTopGenes.comb, ]))
@@ -271,6 +275,9 @@ dim(mCoef)
 colnames(mCoef) = c('Intercept', CVariableSelection.ReduceModel.getMinModel(oVar.subComb, 7))
 pairs(mCoef, pch=20)
 
+
+### once we have results from the classifier we can make some plots to see
+### the performance
 library(lattice)
 library(car)
 ## get the predicted values
@@ -285,10 +292,14 @@ xyplot(ivPredict ~ lData.train$grouping, xlab='Actual Group', ylab='Predicted Pr
 densityplot(~ ivPredict, data=dfData, type='n')
 densityplot(~ ivPredict | fGroups, data=dfData, type='n')
 
+## lets check on a different scale of the score
 densityplot(~ logit(ivPredict), data=dfData)
 xyplot(logit(ivPredict) ~ lData.train$grouping, xlab='Actual Group', ylab='Predicted Probability of Being ATB (1)')
+# convert to logit scale for model fitting
 ivPredict = logit(ivPredict)
 ################################ section for mixture model
+######## this mixture model will help us decide an appropriate cutoff for the decision rule
+######## see Gelman 2013 around P18 for an example of record linking score calibration
 stanDso = rstan::stan_model(file='normResponseFiniteMixture_2.stan')
 
 ## take a subset of the data
@@ -326,6 +337,8 @@ points(params2$`mu[1]`, params2$`mu[2]`, pch=20, col=3)
 points(params3$`mu[1]`, params3$`mu[2]`, pch=20, col=4)
 points(params4$`mu[1]`, params4$`mu[2]`, pch=20, col=5)
 
+
+# model checks
 ############# extract the mcmc sample values from stan
 mStan = do.call(cbind, extract(fit.stan))
 mStan = mStan[,-(ncol(mStan))]
@@ -358,18 +371,19 @@ lines(x, col='darkgrey', lwd=0.6)
 })
 lines(yresp, lwd=2)
 
+
 print(fit.stan)
 
 range(ivPredict)
+## reconvert back to inverse logit scale i.e. 0 to 1 range
+ivPredict = plogis(ivPredict)
 # temp = rnorm(1000, 0.02, 0.02)
 # sapply(seq(0, 1, length.out = 10), function(x) sum(temp >= x)/1000)
 # round(pnorm(seq(0, 1, length.out = 10), 0.02, 0.02, lower.tail = F), 3)
 # round(seq(0, 1, length.out = 10), 3)
 
-## you can add a joint p-value
-## choose an appropriate cutoff for accept and reject regions
+## draw a ROC curve first for calibration performance test
 ivTruth = fGroups == 'ATB'
-
 p = prediction(ivPredict, ivTruth)
 perf.alive = performance(p, 'tpr', 'fpr')
 dfPerf.alive = data.frame(c=perf.alive@alpha.values, t=perf.alive@y.values[[1]], f=perf.alive@x.values[[1]], 
@@ -377,41 +391,64 @@ dfPerf.alive = data.frame(c=perf.alive@alpha.values, t=perf.alive@y.values[[1]],
 colnames(dfPerf.alive) = c('c', 't', 'f', 'r')
 plot(perf.alive)
 
+## draw the simulation lines
+## these are p-values from the mixture components
 ## create posterior smatter lines
 grid = seq(-10, 11.5, length.out = 100)
 f_getSmatterLines = function(m, s, g){
   return(pnorm(g, m, s, lower.tail = F))
 }
-x = f_getSmatterLines(0.76, 0.33, grid)
-y = f_getSmatterLines(0.02, 0.02, grid)
-lines(y, x, col=2)
+y = f_getSmatterLines(0.76, 0.33, grid)
+x = f_getSmatterLines(0.02, 0.02, grid)
+lines(x, y, col=2)
+
+## holders for the simulated p-values
+mTP = matrix(NA, nrow = length(grid), ncol = 200)
+mFP = matrix(NA, nrow = length(grid), ncol = 200)
 
 for (i in 1:200){
   p = sample(1:nrow(mStan), size = 1)
   x = pnorm(grid, mStan[p, 'mu1'], mStan[p, 'sigma1'], lower.tail = F) 
   y = pnorm(grid, mStan[p, 'mu2'], mStan[p, 'sigma2'], lower.tail=F)
-  lines(x, y, col='lightgrey', lwd=0.6)
+  lines(x, y, col='lightgrey', lwd=0.5)
+  mFP[,i] = x
+  mTP[,i] = y
 }
 
-plot(perf.alive, add=T)
+plot(perf.alive, add=T, col='red')
 
 ### check the p-values from the model to select a cutoff point to reduce false positive rate
 ### i.e. to test the class at certain cutoff of the score and then declare it as false match
 ### the others will go for rejection category
 ### see gelman page 19 for such a calibration method.
 
+## third way of using cross validation to draw the ROC curves
+## this method uses LDA but results are pretty comparable to binomial model
+dfData = data.frame(dfData[ , CVariableSelection.ReduceModel.getMinModel(oVar.subComb, 7)])
+colnames(dfData) = CVariableSelection.ReduceModel.getMinModel(oVar.subComb, 7)
+dim(dfData)
+
+oCV = CCrossValidation.LDA(test.dat = dfData, train.dat = dfData, test.groups = fGroups,
+                           train.groups = fGroups, level.predict = 'ATB', boot.num = 100)
+
+plot.cv.performance(oCV)
+
+## compare these 3 tables to decide on a cutoff
+## the simulation suggests somewhere around 0.6 should be the decision cutoff
+df = getCutoffTprFprCrossValidation(oCV)
+dfSim = round(data.frame(logit.inv(grid), fp=rowMeans(mFP), tp=rowMeans(mTP)), 3)
+head(dfPerf.alive)
+
+fPredict = rep('reject', times=length(ivPredict))
+fPredict[ivPredict >= 0.65] = 'ATB'
+table(fPredict, fGroups)
+
+## draw these accept reject points
+xyplot(ivPredict ~ fGroups, xlab='Actual Group', ylab='Predicted Probability of ATB (1)', groups=fPredict,
+       auto.key = list(columns=2))
 
 
-################################ end section
-
-
-
-
-
-
-
-
-
+################################ end section of choosing model on training data
 
 
 ## choose an appropriate cutoff for accept and reject regions
