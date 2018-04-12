@@ -451,17 +451,6 @@ xyplot(ivPredict ~ fGroups, xlab='Actual Group', ylab='Predicted Probability of 
 ################################ end section of choosing model on training data
 
 
-## choose an appropriate cutoff for accept and reject regions
-ivTruth = fGroups.test == 'ATB'
-
-p = prediction(ivPredict, ivTruth)
-perf.alive = performance(p, 'tpr', 'fpr')
-dfPerf.alive = data.frame(c=perf.alive@alpha.values, t=perf.alive@y.values[[1]], f=perf.alive@x.values[[1]], 
-                          r=perf.alive@y.values[[1]]/perf.alive@x.values[[1]])
-colnames(dfPerf.alive) = c('c', 't', 'f', 'r')
-
-
-
 ############################################ Test data set
 ## load the test data and try these combinations
 lData.test = f_LoadObject('GSE37250_normalised_subset_test.RList')
@@ -473,6 +462,7 @@ table(lData.test$grouping)
 
 dfData = data.frame(t(lData.test$data))
 dim(dfData)
+rm(fGroups)
 
 ## subset the data first into test and training tests
 test = sample(1:length(fGroups.test), size = 0.30*length(fGroups.test), replace = F)
@@ -481,6 +471,7 @@ table(fGroups.test[-test])
 
 #pdf('cvFigures.pdf')
 ## 10 fold nested cross validation with various variable combinations
+## for simplicity this time i will check with only a few cases
 par(mfrow=c(1,2))
 for (i in c(1,7)){
   cvTopGenes.sub = CVariableSelection.ReduceModel.getMinModel(oVar.sub, i)
