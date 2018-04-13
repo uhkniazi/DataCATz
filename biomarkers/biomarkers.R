@@ -27,7 +27,7 @@ source('CCrossValidation.R')
 unlink('CCrossValidation.R')
 
 
-lData.train = f_LoadObject('GSE19491_normalised_train.RList')
+lData.train = f_LoadObject('GSE37250_normalised_subset_test.RList')
 str(lData.train)
 
 fGroups = rep('ATB', times=length(lData.train$grouping))
@@ -36,27 +36,27 @@ fGroups = factor(fGroups, levels = c('Other', 'ATB'))
 table(fGroups)
 table(lData.train$grouping)
 
-## select a smaller subset of the data 
-###### fit a model using limma
-library(limma)
-
-design = model.matrix(~ fGroups)
-head(design)
-
-fit = lmFit(lData.train$data, design)
-fit = eBayes(fit)
-
-dfLimmma = topTable(fit, coef=2, adjust='BH', number = Inf)
-dfLimmma = dfLimmma[order(dfLimmma$adj.P.Val, decreasing = F), ]
-
-cvTopVariables = rownames(dfLimmma)[1:2000]
+# ## select a smaller subset of the data 
+# ###### fit a model using limma
+# library(limma)
+# 
+# design = model.matrix(~ fGroups)
+# head(design)
+# 
+# fit = lmFit(lData.train$data, design)
+# fit = eBayes(fit)
+# 
+# dfLimmma = topTable(fit, coef=2, adjust='BH', number = Inf)
+# dfLimmma = dfLimmma[order(dfLimmma$adj.P.Val, decreasing = F), ]
+# 
+cvTopVariables = rownames(lData.train$data)# rownames(dfLimmma)[1:2000]
 
 dfData = data.frame(t(lData.train$data[cvTopVariables, ]))
 
 ## perform nested random forest
 ## adjust boot.num as desired
 oVar.r = CVariableSelection.RandomForest(dfData, fGroups, boot.num = 100, big.warn = F)
-save(oVar.r, file='oVar.r.rds')
+save(oVar.r, file='oVar.r_reverse.rds')
 
 plot.var.selection(oVar.r)
 
@@ -84,7 +84,7 @@ initf = function(chain_id = 1) {
 fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=4, pars=c('tau', 'betas2'), init=initf, 
                     control=list(adapt_delta=0.99, max_treedepth = 11))
 
-save(fit.stan, file='fit.stan.binom.rds')
+save(fit.stan, file='fit.stan.binom_reverse.rds')
 
 print(fit.stan, c('betas2', 'tau'))
 print(fit.stan, 'tau')
@@ -116,7 +116,7 @@ names(m) = colnames(lData$mModMatrix)[2:ncol(lData$mModMatrix)]
 m = abs(m)
 m = sort(m, decreasing = T)
 cvTopGenes.binomial = names(m)[1:30] #names(m[m > 0.25])
-cvTopGenes.binomial[11] = "HLA-DPA1"
+#cvTopGenes.binomial[11] = "HLA-DPA1"
 
 ### test performance of both results, from Random Forest and Binomial Regression
 dfRF = CVariableSelection.RandomForest.getVariables(oVar.r)
@@ -154,13 +154,13 @@ for (i in 1:7){
 
 ### try a combination of top genes from both models
 cvTopGenes.comb = NULL;
-for (i in 1:10){
+for (i in 1:15){
   cvTopGenes.comb = append(cvTopGenes.comb, CVariableSelection.ReduceModel.getMinModel(oVar.sub, i)) 
   cat(i)
 }
 cvTopGenes.comb = unique(cvTopGenes.comb)
 
-for (i in 1:10){
+for (i in 1:15){
   cvTopGenes.comb = append(cvTopGenes.comb, CVariableSelection.ReduceModel.getMinModel(oVar.sub2, i))
   cat(i)
 }
@@ -176,7 +176,7 @@ oVar.subComb = CVariableSelection.ReduceModel(dfData, fGroups, boot.num = 100)
 # plot the number of variables vs average error rate
 plot.var.selection(oVar.subComb)
 
-for (i in 1:7){
+for (i in 1:10){
   cvTopGenes.sub = CVariableSelection.ReduceModel.getMinModel(oVar.subComb, i)
   cat('Variable Count', i, paste(cvTopGenes.sub), '\n')
   #print(cvTopGenes.sub)
@@ -263,7 +263,7 @@ initf = function(chain_id = 1) {
 
 
 fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=3, pars=c('tau', 'betas2'), init=initf, 
-                    control=list(adapt_delta=0.99, max_treedepth = 11))
+                    control=list(adapt_delta=0.99, max_treedepth = 13))
 
 print(fit.stan, c('betas2', 'tau'))
 print(fit.stan, 'tau')
@@ -394,28 +394,28 @@ plot(perf.alive)
 ## draw the simulation lines
 ## these are p-values from the mixture components
 ## create posterior smatter lines
-grid = seq(-10, 11.5, length.out = 100)
+grid = seq(-7.5, 7, length.out = 100)
 f_getSmatterLines = function(m, s, g){
   return(pnorm(g, m, s, lower.tail = F))
 }
-y = f_getSmatterLines(0.76, 0.33, grid)
-x = f_getSmatterLines(0.02, 0.02, grid)
+y = f_getSmatterLines(2, 1.8, grid)
+x = f_getSmatterLines(-2.7, 1.5, grid)
 lines(x, y, col=2)
 
 ## holders for the simulated p-values
-mTP = matrix(NA, nrow = length(grid), ncol = 200)
-mFP = matrix(NA, nrow = length(grid), ncol = 200)
+mTP = matrix(NA, nrow = length(grid), ncol = 2000)
+mFP = matrix(NA, nrow = length(grid), ncol = 2000)
 
-for (i in 1:200){
+for (i in 1:2000){
   p = sample(1:nrow(mStan), size = 1)
   x = pnorm(grid, mStan[p, 'mu1'], mStan[p, 'sigma1'], lower.tail = F) 
   y = pnorm(grid, mStan[p, 'mu2'], mStan[p, 'sigma2'], lower.tail=F)
-  lines(x, y, col='lightgrey', lwd=0.5)
+  lines(x, y, col='darkgrey', lwd=0.5)
   mFP[,i] = x
   mTP[,i] = y
 }
 
-plot(perf.alive, add=T, col='red')
+plot(perf.alive, add=T, col='blue')
 
 ### check the p-values from the model to select a cutoff point to reduce false positive rate
 ### i.e. to test the class at certain cutoff of the score and then declare it as false match
@@ -424,8 +424,8 @@ plot(perf.alive, add=T, col='red')
 
 ## third way of using cross validation to draw the ROC curves
 ## this method uses LDA but results are pretty comparable to binomial model
-dfData = data.frame(dfData[ , CVariableSelection.ReduceModel.getMinModel(oVar.subComb, 7)])
-colnames(dfData) = CVariableSelection.ReduceModel.getMinModel(oVar.subComb, 7)
+dfData = dfData.new[,-8]
+#colnames(dfData) = CVariableSelection.ReduceModel.getMinModel(oVar.subComb, 7)
 dim(dfData)
 
 oCV = CCrossValidation.LDA(test.dat = dfData, train.dat = dfData, test.groups = fGroups,
@@ -440,20 +440,30 @@ dfSim = round(data.frame(logit.inv(grid), fp=rowMeans(mFP), tp=rowMeans(mTP)), 3
 head(dfPerf.alive)
 
 fPredict = rep('reject', times=length(ivPredict))
-fPredict[ivPredict >= 0.65] = 'ATB'
+fPredict[ivPredict >= 0.6] = 'ATB'
 table(fPredict, fGroups)
 
 ## draw these accept reject points
 xyplot(ivPredict ~ fGroups, xlab='Actual Group', ylab='Predicted Probability of ATB (1)', groups=fPredict,
        auto.key = list(columns=2))
 
+xyplot(ivPredict ~ lData.train$grouping, xlab='Actual Group', ylab='Predicted Probability of ATB (1)', groups=fPredict,
+       auto.key = list(columns=2))
+
+p = sample(1:nrow(mStan), size = 2000)
+x = pnorm(logit(0.6), mStan[p, 'mu1'], mStan[p, 'sigma1'], lower.tail = F) 
+y = pnorm(logit(0.6), mStan[p, 'mu2'], mStan[p, 'sigma2'], lower.tail=F)
+hist(x);
+hist(y)
+# at this cutoff what is the expect false positive and true positive rate according to the model
+cvTopGenes.chosen = colnames(dfData)
 
 ################################ end section of choosing model on training data
 
 
 ############################################ Test data set
 ## load the test data and try these combinations
-lData.test = f_LoadObject('GSE37250_normalised_subset_test.RList')
+lData.test = f_LoadObject('GSE19491_normalised_train.RList')
 fGroups.test = rep('ATB', times=length(lData.test$grouping))
 fGroups.test[lData.test$grouping != 'ATB'] = 'Other'
 fGroups.test = factor(fGroups.test, levels = c('Other', 'ATB'))
@@ -462,7 +472,30 @@ table(lData.test$grouping)
 
 dfData = data.frame(t(lData.test$data))
 dim(dfData)
+dfData = dfData[,cvTopGenes.chosen]
 rm(fGroups)
+head(dfData)
+
+oCV.test = CCrossValidation.LDA(dfData, dfData, fGroups.test, fGroups.test, level.predict = 'ATB', 100)
+plot.cv.performance(oCV.test)
+
+d = data.frame(dfData, fGroups.test)
+f = glm( fGroups.test ~ ., data=d, family='binomial')
+ivPredict = predict(f, type = 'response')
+
+fPredict = rep('reject', times=length(ivPredict))
+fPredict[ivPredict >= 0.6] = 'ATB'
+table(fPredict, fGroups.test)
+
+## draw these accept reject points
+xyplot(ivPredict ~ fGroups.test, xlab='Actual Group', ylab='Predicted Probability of ATB (1)', groups=fPredict,
+       auto.key = list(columns=2))
+
+xyplot(ivPredict ~ lData.test$grouping, xlab='Actual Group', ylab='Predicted Probability of ATB (1)', groups=fPredict,
+       auto.key = list(columns=2))
+
+
+
 
 ## subset the data first into test and training tests
 test = sample(1:length(fGroups.test), size = 0.30*length(fGroups.test), replace = F)
