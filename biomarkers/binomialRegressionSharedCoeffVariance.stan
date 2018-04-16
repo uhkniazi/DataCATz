@@ -16,7 +16,7 @@ transformed parameters {
   vector[Ntotal] mu; // fitted values from linear predictor
   vector[Ncol] betas2;
   betas2[1] = betas[1];
-  # tau can be close to zero henece parameterized this way
+  // tau can be close to zero henece parameterized this way
   betas2[2:Ncol] = betas[2:Ncol] * tau; 
   mu = X * betas2; 
   mu = inv_logit(mu);

@@ -116,6 +116,14 @@ names(m) = colnames(lData$mModMatrix)[2:ncol(lData$mModMatrix)]
 m = abs(m)
 m = sort(m, decreasing = T)
 cvTopGenes.binomial = names(m)[1:30] #names(m[m > 0.25])
+
+p.old = par(mar=c(6,3,4,2)+0.1)
+y = c(0, 2.5)
+l2 = barplot(m[cvTopGenes.binomial], 
+             las=2, xaxt='n', col='grey', main='Top Variables', ylim=y)
+axis(1, at = l2, labels = cvTopGenes.binomial, tick = F, las=2, cex.axis=0.7 )
+
+
 #cvTopGenes.binomial[11] = "HLA-DPA1"
 
 ### test performance of both results, from Random Forest and Binomial Regression
@@ -288,13 +296,19 @@ X = as.matrix(cbind(rep(1, times=nrow(dfData.new)), dfData.new[,colnames(mCoef)[
 colnames(X) = colnames(mCoef)
 ivPredict = mypred(colMeans(mCoef), list(mModMatrix=X))[,1]
 xyplot(ivPredict ~ fGroups, xlab='Actual Group', ylab='Predicted Probability of Being ATB (1)')
-xyplot(ivPredict ~ lData.train$grouping, xlab='Actual Group', ylab='Predicted Probability of Being ATB (1)')
+xyplot(ivPredict ~ lData.train$grouping, xlab='Actual Group', ylab='Predicted Probability of Being ATB (1)',
+       main='Predicted scores vs Actual groups')
 densityplot(~ ivPredict, data=dfData, type='n')
-densityplot(~ ivPredict | fGroups, data=dfData, type='n')
+densityplot(~ ivPredict | fGroups, data=dfData, type='n', xlab='Predicted Score', main='Actual Scale')
+densityplot(~ ivPredict, groups=fGroups, data=dfData, type='n', 
+            xlab='Predicted Score', main='Actual Scale', auto.key = list(columns=2))
 
 ## lets check on a different scale of the score
 densityplot(~ logit(ivPredict), data=dfData)
 xyplot(logit(ivPredict) ~ lData.train$grouping, xlab='Actual Group', ylab='Predicted Probability of Being ATB (1)')
+densityplot(~ logit(ivPredict), groups=fGroups, data=dfData, type='n', 
+            xlab='Predicted Score', main='Logit Scale', auto.key = list(columns=2))
+
 # convert to logit scale for model fitting
 ivPredict = logit(ivPredict)
 ################################ section for mixture model
@@ -398,8 +412,8 @@ grid = seq(-7.5, 7, length.out = 100)
 f_getSmatterLines = function(m, s, g){
   return(pnorm(g, m, s, lower.tail = F))
 }
-y = f_getSmatterLines(2, 1.8, grid)
-x = f_getSmatterLines(-2.7, 1.5, grid)
+y = f_getSmatterLines(2.27, 1.96, grid)
+x = f_getSmatterLines(-2.57, 1.58, grid)
 lines(x, y, col=2)
 
 ## holders for the simulated p-values
@@ -451,10 +465,13 @@ xyplot(ivPredict ~ lData.train$grouping, xlab='Actual Group', ylab='Predicted Pr
        auto.key = list(columns=2))
 
 p = sample(1:nrow(mStan), size = 2000)
-x = pnorm(logit(0.6), mStan[p, 'mu1'], mStan[p, 'sigma1'], lower.tail = F) 
+x = pnorm(logit(0.6), mStan[p, 'mu1'], mStan[p, 'sigma1'], lower.tail = F)
 y = pnorm(logit(0.6), mStan[p, 'mu2'], mStan[p, 'sigma2'], lower.tail=F)
-hist(x);
-hist(y)
+
+par(p.old)
+par(mfrow=c(1,2))
+hist(x, xlab='Expected Rate', main='False Positive Rate at cutoff')
+hist(y, xlab='Expected Rate', main='True Positive Rate at cutoff')
 # at this cutoff what is the expect false positive and true positive rate according to the model
 cvTopGenes.chosen = colnames(dfData)
 
