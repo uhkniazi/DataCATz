@@ -109,10 +109,11 @@ lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=2,
 # ## calculate initial values
 # initf = function(chain_id = 1) {
 #   list(mEigens=pr.out$rotation)
-# } 
+# }
 
-fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=3, cores=3)#, init=initf) 
+fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=3, cores=3)#, init=initf)
 #control=list(adapt_delta=0.99, max_treedepth = 10)) # some additional control values/not necessary usually
+save(fit.stan, file='Temp/fit.stan.rds')
 print(fit.stan)
 
 ## extract the results
@@ -141,10 +142,11 @@ stanDso2 = rstan::stan_model(file='pcaAndVectors/bayesianPCA2.stan')
 
 ## set stan data
 lStanData = list(Ntotal=nrow(mData), Nvars=ncol(mData), Neigens=min(dim(mData)),
-                 y=mData)
+                 y=scale(mData))
 
-fit.stan2 = sampling(stanDso2, data=lStanData, iter=1000, chains=3, cores=3)#, #init=initf, 
+fit.stan2 = sampling(stanDso2, data=lStanData, iter=5000, chains=3, cores=3)#, #init=initf, 
 #control=list(adapt_delta=0.99, max_treedepth = 10)) # some additional control values/not necessary usually
+save(fit.stan2, file='Temp/fit.stan2.rds')
 print(fit.stan2)
 
 ## extract the results
@@ -158,7 +160,7 @@ iSigma2 = colMeans(mSigma2)
 iOrder = order(iSigma2, decreasing = T)
 par(mfrow=c(1,2))
 plot(iSigma2[iOrder], type='b', xlab='Index', ylab='Standard Deviation', main='MCMC SD Eigen Vec')
-pr.out = prcomp(mData, scale=F, center = T)
+pr.out = prcomp(mData, scale=T, center = T)
 plot(pr.out$sdev, type='b', xlab='Index', ylab='Standard Deviation', main='Analytical SD')
 
 ## extract the latent variables
@@ -179,10 +181,26 @@ pr.out = prcomp(mData, scale=T, center = T)
 plot(pr.out$x, col=ivCols, pch=20, main='Analytical')
 text(pr.out$x, labels = rownames(mData), adj = 1, cex = 0.6)
 
+library(scatterplot3d)
+## get the first 2 latent variables for plotting
+mComp.1 = mComp[,,iOrder[1]]
+ivComp.1 = colMeans(mComp.1)
+mComp.2 = mComp[,,iOrder[2]]
+ivComp.2 = colMeans(mComp.2)
+mComp.3 = mComp[,,iOrder[3]]
+ivComp.3 = colMeans(mComp.3)
 
+s3d = scatterplot3d(ivComp.1, ivComp.2, ivComp.3, color = ivCols, pch=20)
+text(s3d$xyz.convert(ivComp.1, ivComp.2, ivComp.3), labels = rownames(mData), 
+     cex= 0.7, col = "steelblue")
 
-
-
+m = cbind(ivComp.1, ivComp.2, ivComp.3)
+d = dist(m)
+d2 = as.matrix(d)
+dim(d2)
+image(1:ncol(d2), 1:ncol(d2), d2, axes=F, xlab='', ylab='', col=heat.colors(3))
+axis(1, 1:ncol(d2), colnames(d2), cex.axis=0.5, las=3)
+axis(2, 1:ncol(d2), colnames(d2), cex.axis=0.4, las=1)
 
 
 
