@@ -41,13 +41,17 @@ getResponse = function(inc, d, r, winner){
   return(y)
 }
 
-
+# check if the samples i.e. units of analysis are concordant in the 2 datasets
+identical(dfData$state, dfData.prev$state)
+identical(dfData$district, dfData.prev$district)
 ## get the winner for current year
 w = sapply(1:nrow(dfData), function(x) getWinner(dfData$democratVotes[x], dfData$republicanVotes[x]))
 table(w)
 i = which(w == -1)
 dfData = dfData[-i,]
 dfData.prev = dfData.prev[-i,]
+identical(dfData$state, dfData.prev$state)
+identical(dfData$district, dfData.prev$district)
 
 dfData$winner = factor(w[-i])
 dfData$treatment = factor(getTreatment(dfData$incumbency))
@@ -55,7 +59,17 @@ dfData$response = sapply(1:nrow(dfData), function(x){
   getResponse(dfData$incumbency[x], dfData$democratVotes[x], dfData$republicanVotes[x], dfData$winner[x])
 }) 
 
-dfData$oldResult = sapply(1:nrow(dfData), function(x){
-  getResponse(dfData$incumbency[x], dfData.prev$democratVotes[x], dfData.prev$republicanVotes[x], dfData$winner[x])
-}) 
+# get the vote for current incumbent in previous election
+dfData$oldDemocrat = dfData.prev$democratVotes / (dfData.prev$democratVotes + dfData.prev$republicanVotes)
+dfData$oldRepublican = dfData.prev$republicanVotes / (dfData.prev$democratVotes + dfData.prev$republicanVotes)
+
+## drop the samples that have may not complete data
+## in contested districts in 1986 and 1988.
+i = which(dfData$oldDemocrat == 0 | dfData$oldDemocrat == 1)
+dfData = dfData[-i,]
+dfData.prev = dfData.prev[-i,]
+## produce figure 14.1
+plot(dfData$oldDemocrat, (dfData$democratVotes)/ (dfData$democratVotes+dfData$republicanVotes), 
+     pch=c(1,2)[as.numeric(dfData$treatment)], xlab='1986', ylab='1988')
+
 
