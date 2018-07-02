@@ -82,7 +82,7 @@ dfData$incumbentParty = factor(w)
 ## get the treatment variable i.e. if open seat or incumbent candidate running
 t = getTreatment(dfData$incumbency)
 table(t)
-dfData$treatment = factor(t)
+dfData$treatment = factor(t, levels = c('open', 'incumbent'))
 
 ## get previous election results for current incumbent party, i.e. winner of previous elections
 w = sapply(1:nrow(dfData.prev), function(x) getWinner(dfData.prev$democratVotes[x], dfData.prev$republicanVotes[x]))
@@ -100,6 +100,10 @@ p = sapply(1:nrow(dfData), function(x){
 summary(p)
 dfData$response = p
 
+## incumbent party variable 
+i = ifelse(as.character(dfData$incumbentParty) == 'd', 1, -1)
+table(i, dfData$incumbentParty)
+dfData$incumbentParty = i
 # get the democratic vote for current and previous years
 prev = dfData.prev$democratVotes / (dfData.prev$democratVotes + dfData.prev$republicanVotes)
 cur = dfData$democratVotes / (dfData$democratVotes + dfData$republicanVotes)
