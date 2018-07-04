@@ -110,9 +110,15 @@ cur = dfData$democratVotes / (dfData$democratVotes + dfData$republicanVotes)
 summary(prev)
 summary(cur)
 
+
 ## produce figure 14.1
-plot(prev, cur, pch=c(20,2)[as.numeric(dfData$treatment)], xlab='1986', ylab='1988',
+plot(prev, cur, pch=c(2,20)[as.numeric(dfData$treatment)], xlab='1986', ylab='1988',
      xlim=c(0,1), ylim=c(0,1), main='Democratic Vote in 1988 vs 1986')
+
+
+## load the merged data
+load('incumbentGelman/dataExternal/dfMerged.rds')
+dfData = dfMerged[dfMerged$year == 1988, ]
 
 #####################################################################################################
 ############# Data sets produced, now fit model
@@ -186,8 +192,17 @@ exp(mean(s[,'sigmaPop']))
 pairs(s, pch=20)
 fit.2$sir = s
 
+## table 14.1
+mTable = matrix(NA, nrow = 5, ncol = 5)
+rownames(mTable) = c('incumbency', 'vote proportion 1986', 'incumbent party', 'intercept', 'residual sd')
+mTable[1, ] = round(quantile(s[,3], probs = c(0.025, 0.25, 0.5, 0.75, 0.975)), 3)
+mTable[2, ] = round(quantile(s[,4], probs = c(0.025, 0.25, 0.5, 0.75, 0.975)), 3)
+mTable[3, ] = round(quantile(s[,5], probs = c(0.025, 0.25, 0.5, 0.75, 0.975)), 3)
+mTable[4, ] = round(quantile(s[,2], probs = c(0.025, 0.25, 0.5, 0.75, 0.975)), 3)
+mTable[5, ] = round(quantile(exp(s[,1]), probs = c(0.025, 0.25, 0.5, 0.75, 0.975)), 3)
+
 #########################################################
-########## some model checks
+########## some model checks on 1988
 #########################################################
 
 # get the fitted value
@@ -343,3 +358,57 @@ mChecks['Mean',] = getPValue(iMean.sim, iMean.observed)
 mChecks['Residual.open', ] = getPValue(iProp.sim.open, iProp.observed.open)
 mChecks['Residual.inc', ] = getPValue(iProp.sim.inc, iProp.observed.inc)
 mChecks
+
+
+######################################################################################
+### repeat this on all the years 
+#####################################################################################
+
+ivYears = unique(dfMerged$year)
+lYears = vector('list', length = length(ivYears))
+
+for (yr in seq_along(ivYears)){
+  dfData = dfMerged[dfMerged$year == ivYears[yr], ]
+  
+  ## fit models for each year
+  lData = list(resp=dfData$response, mModMatrix=model.matrix(response ~ treatment + previousProportion + incumbentParty, data=dfData))
+  start = c('sigmaPop'=log(2), 'betas'=rep(0, times=ncol(lData$mModMatrix)))
+
+  fit.2 = mylaplace(mylogpost, start, lData)
+  ### lets take a sample from this using SIR
+  ## parameters for the multivariate t density
+  tpar = list(m=fit.2$mode, var=fit.2$var*2, df=4)
+  ## get a sample directly and using sir (sampling importance resampling with a t proposal density)
+  s = sir(mylogpost, tpar, 1000, lData)
+  colnames(s)[-1] = colnames(lData$mModMatrix)
+  lYears[[yr]] = s
+}
+
+names(lYears) = ivYears
+
+## utility function for plotting
+getms = function(f){
+  m = mean(f)
+  se = sd(f)
+  m.up = m+1.96*se
+  m.down = m-1.96*se
+  ret= c(m, m.up, m.down)
+  names(ret) = c('m', 'm.up', 'm.down')
+  return(ret)
+}
+
+mTreatment = sapply(lYears, function(x) x[,3])
+
+df = apply(mTreatment, 2, getms)
+x = 1:ncol(mTreatment)
+
+## reproduce figure 14.2 from gelman 2013 
+plot(x, df['m',], ylim=c(min(df), max(df)), pch=20, xlab='Year', 
+     ylab='estimated incumbency advantage', main='', xaxt='n')
+axis(1, at = x, labels = colnames(mTreatment), las=2)
+for(l in 1:ncol(df)){
+  lines(x=c(x[l], x[l]), y=df[c(2,3),l], lwd=0.5)
+}
+
+
+
