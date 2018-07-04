@@ -261,6 +261,10 @@ plot(dfData$response, iResid, pch=c(2,20)[as.numeric(dfData$treatment)], cex=0.5
 lines(lowess(dfData$response, iResid))
 temp = sapply(1:1000, function(x) lines(lowess(dfData$response, mDraws.res[,x]), lwd=0.5, col=2))
 
+plot(density(iResid))
+g = apply(mDraws.res, 2, function(x) lines(density(x), lwd=0.5, col=2))
+lines(density(iResid))
+
 ###############################################################
 ######### test quantities for model fits
 ###############################################################
@@ -289,21 +293,53 @@ T1_mean = function(Y){
   return(mean(Y))
 } 
 
-
-
-### search for outliers
-s = exp(mean(fit.2$sir[,'sigmaPop']))
-## 3 standard deviations 
-iResLimit = round(s*3, 1)
-
-## generate the test statistic
-## proportion of absolute values residuals that exceed limit iResLimit
-iProp.observed = sum(abs(iResid) > iResLimit)/length(iResid)
-
+## proportion of absolute value residuals that exceed limit iResLimit
 T1_proportion = function(Y) {
   return(sum(abs(Y) > iResLimit)/length(Y))
 }
 
-t1_proportion = apply(mDraws.res, 2, T1_proportion)
-t1_var = apply(mDraws.sim, 2, T1_var)
+T1_proportion.open = function(Y) {
+  return(sum(abs(Y)[dfData$treatment == 'open'] > iResLimit)/length(Y[dfData$treatment == 'open']))
+}
 
+T1_proportion.inc = function(Y) {
+  return(sum(abs(Y)[dfData$treatment == 'incumbent'] > iResLimit)/length(Y[dfData$treatment == 'incumbent']))
+}
+
+
+### search for outliers by checking the simulated residuals
+s = exp(mean(fit.2$sir[,'sigmaPop']))
+## 3 standard deviations - this is the sd for the normal distribution used in the likelihood
+iResLimit = round(s*3, 1)
+
+## generate the test statistics and the observed value of that statistic and p-values
+# observed numbers of outliers in residuals
+iProp.observed = sum(abs(iResid) > iResLimit)/length(iResid)
+iProp.observed.open = sum(abs(iResid)[dfData$treatment == 'open'] > iResLimit)/length(iResid[dfData$treatment == 'open'])
+iProp.observed.inc = sum(abs(iResid)[dfData$treatment == 'incumbent'] > iResLimit)/length(iResid[dfData$treatment == 'incumbent'])
+iVar.observed = var(dfData$response)
+iMin.observed = min(dfData$response)
+iMax.observed = max(dfData$response)
+iMean.observed = mean(dfData$response)
+
+# simulated quantites using posterior predictive data
+iProp.sim = apply(mDraws.res, 2, T1_proportion)
+iProp.sim.open = apply(mDraws.res, 2, T1_proportion.open)
+iProp.sim.inc = apply(mDraws.res, 2, T1_proportion.inc)
+iVar.sim = apply(mDraws.sim, 2, T1_var)
+iMin.sim = apply(mDraws.sim, 2, T1_min)
+iMax.sim = apply(mDraws.sim, 2, T1_max)
+iMean.sim = apply(mDraws.sim, 2, T1_mean)
+
+mChecks = matrix(NA, nrow=7, ncol=1)
+rownames(mChecks) = c('Variance', 'Residuals', 'Residual.open', 'Residual.inc', 'Max', 'Min', 'Mean')
+colnames(mChecks) = c('Model')
+
+mChecks['Variance',] = getPValue(iVar.sim, iVar.observed)
+mChecks['Residuals', ] = getPValue(iProp.sim, iProp.observed)
+mChecks['Max',] = getPValue(iMax.sim, iMax.observed)
+mChecks['Min',] = getPValue(iMin.sim, iMin.observed)
+mChecks['Mean',] = getPValue(iMean.sim, iMean.observed)
+mChecks['Residual.open', ] = getPValue(iProp.sim.open, iProp.observed.open)
+mChecks['Residual.inc', ] = getPValue(iProp.sim.inc, iProp.observed.inc)
+mChecks
