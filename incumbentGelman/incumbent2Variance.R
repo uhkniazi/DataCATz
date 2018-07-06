@@ -24,7 +24,7 @@ m = model.matrix(response ~ treatment + previousProportion + incumbentParty, dat
 lStanData = list(Ntotal=nrow(dfData), NgroupMap=as.numeric(dfData$treatment), Ncol=ncol(m), X=m,
                  y=dfData$response)
 
-fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('betas', 'mu', 'sigmaPop'),
+fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=2, pars=c('betas', 'mu', 'sigmaPop'),
                     cores=2)
 print(fit.stan, c('betas', 'sigmaPop'), digits=3)
 
@@ -49,30 +49,27 @@ names(betas) = colnames(lStanData$X)
 # compare with lm 
 data.frame(coef(fit.1), betas)
 
-s = sir(mylogpost, tpar, 5000, lData)
-colnames(s)[-1] = colnames(lData$mModMatrix)
-apply(s, 2, mean)
-apply(s, 2, sd)
-exp(mean(s[,'sigmaPop']))
+s = cbind(extract(fit.stan)$betas, extract(fit.stan)$sigmaPop)
+colnames(s) = c(colnames(lStanData$X), 'sigmaOpen', 'sigmaIncumbent')
 pairs(s, pch=20)
-fit.2$sir = s
 
 ## table 14.1
-mTable = matrix(NA, nrow = 5, ncol = 5)
-rownames(mTable) = c('incumbency', 'vote proportion 1986', 'incumbent party', 'intercept', 'residual sd')
-mTable[1, ] = round(quantile(s[,3], probs = c(0.025, 0.25, 0.5, 0.75, 0.975)), 3)
-mTable[2, ] = round(quantile(s[,4], probs = c(0.025, 0.25, 0.5, 0.75, 0.975)), 3)
-mTable[3, ] = round(quantile(s[,5], probs = c(0.025, 0.25, 0.5, 0.75, 0.975)), 3)
-mTable[4, ] = round(quantile(s[,2], probs = c(0.025, 0.25, 0.5, 0.75, 0.975)), 3)
-mTable[5, ] = round(quantile(exp(s[,1]), probs = c(0.025, 0.25, 0.5, 0.75, 0.975)), 3)
+mTable = matrix(NA, nrow = 6, ncol = 5)
+rownames(mTable) = c('incumbency', 'vote proportion 1986', 'incumbent party', 'intercept', 'residual sd Open', 'residual sd Incumbent')
+mTable[1, ] = round(quantile(s[,2], probs = c(0.025, 0.25, 0.5, 0.75, 0.975)), 3)
+mTable[2, ] = round(quantile(s[,3], probs = c(0.025, 0.25, 0.5, 0.75, 0.975)), 3)
+mTable[3, ] = round(quantile(s[,4], probs = c(0.025, 0.25, 0.5, 0.75, 0.975)), 3)
+mTable[4, ] = round(quantile(s[,1], probs = c(0.025, 0.25, 0.5, 0.75, 0.975)), 3)
+mTable[5, ] = round(quantile((s[,5]), probs = c(0.025, 0.25, 0.5, 0.75, 0.975)), 3)
+mTable[6, ] = round(quantile((s[,6]), probs = c(0.025, 0.25, 0.5, 0.75, 0.975)), 3)
 
 #########################################################
 ########## some model checks on 1988
 #########################################################
-
+mStan = s
 # get the fitted value
-iBetas = colMeans(fit.2$sir)[-1]
-fitted = lData$mModMatrix %*% iBetas
+iBetas = colMeans(mStan[,1:4])
+fitted = lStanData$X %*% iBetas
 
 plot(dfData$response, fitted, pch=c(2,20)[as.numeric(dfData$treatment)], cex=0.5)
 # get residuals that is response minus fitted values
@@ -90,25 +87,34 @@ library(MASS)
 plot(fitted, stdres(fit.1), pch=c(2,20)[as.numeric(dfData$treatment)], cex=0.5, main='standardized residuals - lm')
 lines(lowess(fitted, stdres(fit.1)), col=2, lwd=2)
 ## see equation 14.7 in Gelman 2013
-s = exp(mean(fit.2$sir[,'sigmaPop']))
+s = colMeans(mStan[,5:6])
+s = s[as.numeric(dfData$treatment)]
 plot(fitted, iResid/s, pch=c(2,20)[as.numeric(dfData$treatment)], cex=0.5, main='standardized residuals - SIR')
 lines(lowess(fitted, iResid/s), col=2, lwd=2)
 
+plot(stdres(fit.1), iResid/s, pch=c(2,20)[as.numeric(dfData$treatment)], cex=0.5)
+
 ### generate some posterior predictive data
 ## follow the algorithm in section 14.3 page 363 in Gelman 2013
-simulateOne = function(betas, sigma, mModMatrix){
+simulateOne = function(betas, sigma, mModMatrix, groupMap){
   f = mModMatrix %*% betas
-  yrep = rnorm(length(f), f, sigma)
+  yrep = rnorm(length(f), f, sigma[groupMap])
   return(yrep)
 }
 
-runRegression = function(yrep, df){
-  df$response = yrep
-  return(lm(response ~ treatment + previousProportion + incumbentParty, data=df))
+runRegression = function(yrep, lStanData){
+  lStanData$y = yrep
+  f.s = sampling(stanDso, data=lStanData, iter=1000, chains=2, pars=c('betas', 'mu', 'sigmaPop'),
+                      cores=2)
+  return(f.s)
 }
 
-getResiduals = function(fit.object){
-  return(resid(fit.object))
+# returns standardized residuals
+getResiduals = function(fit.object, mModMatrix, groupMap, yrep){
+  b = colMeans(extract(fit.object)$betas)
+  f = mModMatrix %*% b
+  r = (yrep - f)/extract(fit.object)$sigmaPop[groupMap]
+  return(r)
 }
 
 
@@ -118,13 +124,17 @@ mDraws.fitted = matrix(NA, nrow = nrow(dfData), ncol=1000)
 mDraws.res = matrix(NA, nrow = nrow(dfData), ncol=1000)
 
 for (i in 1:1000){
-  p = sample(1:nrow(fit.2$sir), 1)
-  sigma = exp(fit.2$sir[p,'sigmaPop'])
-  betas = fit.2$sir[p,-1]
-  mDraws.sim[,i] = simulateOne(betas, sigma, lData$mModMatrix)
-  mDraws.fitted[,i] = fitted(runRegression(mDraws.sim[,i], dfData))
-  mDraws.res[,i] = getResiduals(runRegression(mDraws.sim[,i], dfData))
+  p = sample(1:nrow(mStan), 1)
+  sigma = mStan[p,5:6]
+  betas = mStan[p, 1:4]
+  mDraws.sim[,i] = simulateOne(betas, sigma, lStanData$X, as.numeric(dfData$treatment))
+  f.s = runRegression(mDraws.sim[,i], lStanData)
+  mDraws.fitted[,i] = apply(extract(f.s)$mu, 2, mean)
+  mDraws.res[,i] = getResiduals(f.s, lStanData$X, groupMap = as.numeric(dfData$treatment),
+                                mDraws.sim[,i])
 }
+
+## add a section here to get residuals not standardized
 
 ### visual checks
 ivResp = dfData$response
@@ -188,9 +198,9 @@ T1_proportion.inc = function(Y) {
 
 
 ### search for outliers by checking the simulated residuals
-s = exp(mean(fit.2$sir[,'sigmaPop']))
+#s = exp(mean(fit.2$sir[,'sigmaPop']))
 ## 3 standard deviations - this is the sd for the normal distribution used in the likelihood
-iResLimit = round(s*3, 1)
+iResLimit = 2; #round(s*3, 1)
 
 ## generate the test statistics and the observed value of that statistic and p-values
 # observed numbers of outliers in residuals
