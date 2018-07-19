@@ -29,7 +29,7 @@ fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('betas'
 print(fit.stan, c('betas', 'sigmaPop'), digits=3)
 
 # some diagnostics for stan
-traceplot(fit.stan, c('betas', 'sigmaPop'), ncol=1, inc_warmup=F)
+traceplot(fit.stan, c('sigmaPop'), ncol=1, inc_warmup=F)
 
 ## some sample diagnostic plots
 library(coda)
@@ -76,7 +76,7 @@ plot(dfData$response, fitted, pch=c(2,20)[as.numeric(dfData$treatment)], cex=0.5
 iResid = (dfData$response - fitted)
 plot(dfData$response, iResid, pch=c(2,20)[as.numeric(dfData$treatment)], cex=0.5)
 
-plot(fitted, iResid, pch=c(2,20)[as.numeric(dfData$treatment)], cex=0.5, main='SIR')
+plot(fitted, iResid, pch=c(2,20)[as.numeric(dfData$treatment)], cex=0.5, main='Two Variance', xlab='Fitted', ylab='Residuals')
 lines(lowess(fitted, iResid), col=2, lwd=2)
 
 plot(predict(fit.1), resid(fit.1), pch=c(2,20)[as.numeric(dfData$treatment)], cex=0.5, main='lm')
@@ -140,9 +140,10 @@ for (i in 1:1000){
 ivResp = dfData$response
 yresp = density(ivResp)
 plot(yresp, xlab='', main='Fitted distribution', ylab='density', lwd=2)#, ylim=c(0, 1))
+hist(ivResp, prob=T, main='Original Data with simulated data', xlab='Response Variable')
 temp = apply(mDraws.sim, 2, function(x) {x = density(x)
 #x$y = x$y/max(x$y)
-lines(x, col='red', lwd=0.6)
+lines(x, col='lightgrey', lwd=0.6)
 })
 lines(yresp)
 
@@ -183,6 +184,10 @@ T1_mean = function(Y){
 } 
 
 ## proportion of absolute value residuals that exceed limit iResLimit
+T1_proportion = function(Y) {
+  return(sum(abs(Y) > iResLimit[as.numeric(dfData$treatment)])/length(Y))
+}
+
 T1_proportion.open = function(Y) {
   return(sum(abs(Y)[dfData$treatment == 'open'] > iResLimit['sigmaOpen'])/length(Y[dfData$treatment == 'open']))
 }
@@ -199,6 +204,7 @@ iResLimit = round(s*3, 1)
 
 ## generate the test statistics and the observed value of that statistic and p-values
 # observed numbers of outliers in residuals
+iProp.observed = sum(abs(iResid) > iResLimit[as.numeric(dfData$treatment)])/length(iResid)
 iProp.observed.open = sum(abs(iResid)[dfData$treatment == 'open'] > iResLimit['sigmaOpen'])/length(iResid[dfData$treatment == 'open'])
 iProp.observed.inc = sum(abs(iResid)[dfData$treatment == 'incumbent'] > iResLimit['sigmaIncumbent'])/length(iResid[dfData$treatment == 'incumbent'])
 iVar.observed = var(dfData$response)
@@ -207,6 +213,7 @@ iMax.observed = max(dfData$response)
 iMean.observed = mean(dfData$response)
 
 # simulated quantites using posterior predictive data
+iProp.sim = apply(mDraws.res, 2, T1_proportion)
 iProp.sim.open = apply(mDraws.res, 2, T1_proportion.open)
 iProp.sim.inc = apply(mDraws.res, 2, T1_proportion.inc)
 iVar.sim = apply(mDraws.sim, 2, T1_var)
@@ -226,6 +233,8 @@ mChecks['Residual.open', ] = getPValue(iProp.sim.open, iProp.observed.open)
 mChecks['Residual.inc', ] = getPValue(iProp.sim.inc, iProp.observed.inc)
 mChecks
 
+hist(iProp.sim, prob=T)
+points(iProp.observed, y=0)
 
 ######################################################################################
 ### repeat this on all the years 
@@ -263,10 +272,22 @@ mOpen = mOpen[,-23]
 i = colMeans(mIncumbent)
 o = colMeans(mOpen)
 
-matplot(cbind(i, o), type='l', xaxt='n', lty=1:2, xlim=c(1, 22))
+matplot(cbind(i, o), type='l', xaxt='n', lty=1:2, xlim=c(1, 22), ylab='Model Estimated Residuals')
 axis(side = 1, at = 1:length(i), labels=colnames(mIncumbent), las=2)
 legend('topleft', legend = c('incumbent', 'open'), lty=1:2, col=1:2)
 
+## coefficient for treatment
+mTreatment = sapply(lYears, function(x) x[,2])[,-23]
 
+df = apply(mTreatment, 2, getms)
+x = 1:ncol(mTreatment)
+
+## reproduce figure 14.2 from gelman 2013 
+plot(x, df['m',], ylim=c(min(df), max(df)), pch=20, xlab='Year', main='Modelling uncertainty in 2 Variance Model',
+     ylab='estimated incumbency advantage', xaxt='n')
+axis(1, at = x, labels = colnames(mTreatment), las=2)
+for(l in 1:ncol(df)){
+  lines(x=c(x[l], x[l]), y=df[c(2,3),l], lwd=0.5)
+}
 
 

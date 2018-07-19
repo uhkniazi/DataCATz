@@ -214,7 +214,7 @@ plot(dfData$response, fitted, pch=c(2,20)[as.numeric(dfData$treatment)], cex=0.5
 iResid = (dfData$response - fitted)
 plot(dfData$response, iResid, pch=c(2,20)[as.numeric(dfData$treatment)], cex=0.5)
 
-plot(fitted, iResid, pch=c(2,20)[as.numeric(dfData$treatment)], cex=0.5, main='SIR')
+plot(fitted, iResid, pch=c(2,20)[as.numeric(dfData$treatment)], cex=0.5, main='Single Variance', ylab='Residuals', xlab='Fitted')
 lines(lowess(fitted, iResid), col=2, lwd=2)
 
 plot(predict(fit.1), resid(fit.1), pch=c(2,20)[as.numeric(dfData$treatment)], cex=0.5, main='lm')
@@ -226,7 +226,8 @@ plot(fitted, stdres(fit.1), pch=c(2,20)[as.numeric(dfData$treatment)], cex=0.5, 
 lines(lowess(fitted, stdres(fit.1)), col=2, lwd=2)
 ## see equation 14.7 in Gelman 2013
 s = exp(mean(fit.2$sir[,'sigmaPop']))
-plot(fitted, iResid/s, pch=c(2,20)[as.numeric(dfData$treatment)], cex=0.5, main='standardized residuals - SIR')
+plot(fitted, iResid/s, pch=c(2,20)[as.numeric(dfData$treatment)], cex=0.5, main='standardized residuals - Single Variance',
+     ylab='Standardized Residuals', xlab='Fitted')
 lines(lowess(fitted, iResid/s), col=2, lwd=2)
 
 ### generate some posterior predictive data
@@ -265,9 +266,10 @@ for (i in 1:1000){
 ivResp = dfData$response
 yresp = density(ivResp)
 plot(yresp, xlab='', main='Fitted distribution', ylab='density', lwd=2)#, ylim=c(0, 1))
+hist(ivResp, prob=T, main='Original Data with simulated data', xlab='Response Variable')
 temp = apply(mDraws.sim, 2, function(x) {x = density(x)
 #x$y = x$y/max(x$y)
-lines(x, col='red', lwd=0.6)
+lines(x, col='lightgrey', lwd=0.6)
 })
 lines(yresp)
 
@@ -277,7 +279,8 @@ lines(lowess(dfData$response, iResid))
 temp = sapply(1:1000, function(x) lines(lowess(dfData$response, mDraws.res[,x]), lwd=0.5, col=2))
 
 plot(density(iResid))
-g = apply(mDraws.res, 2, function(x) lines(density(x), lwd=0.5, col=2))
+hist(iResid, prob=T)
+g = apply(mDraws.res, 2, function(x) lines(density(x), lwd=0.5, col='lightgrey'))
 lines(density(iResid))
 
 ###############################################################
@@ -364,8 +367,17 @@ mChecks
 ### repeat this on all the years 
 #####################################################################################
 
+getResiduals = function(betas, mModMatrix, yrep){
+  f = mModMatrix %*% betas
+  r = (yrep - f)
+  return(r)
+}
+
+
 ivYears = unique(dfMerged$year)
 lYears = vector('list', length = length(ivYears))
+lResiduals.open = vector('list', length = length(ivYears))
+lResiduals.inc = vector('list', length = length(ivYears))
 
 for (yr in seq_along(ivYears)){
   dfData = dfMerged[dfMerged$year == ivYears[yr], ]
@@ -382,9 +394,14 @@ for (yr in seq_along(ivYears)){
   s = sir(mylogpost, tpar, 1000, lData)
   colnames(s)[-1] = colnames(lData$mModMatrix)
   lYears[[yr]] = s
+  r = getResiduals(colMeans(s)[-1], lData$mModMatrix, lData$resp)
+  lResiduals.inc[[yr]] = r[dfData$treatment == 'incumbent']
+  lResiduals.open[[yr]] = r[dfData$treatment == 'open']
 }
 
 names(lYears) = ivYears
+names(lResiduals.inc) = ivYears
+names(lResiduals.open) = ivYears
 
 ## utility function for plotting
 getms = function(f){
@@ -410,5 +427,11 @@ for(l in 1:ncol(df)){
   lines(x=c(x[l], x[l]), y=df[c(2,3),l], lwd=0.5)
 }
 
+i = sapply(lResiduals.inc, sd)[-23]
+o = sapply(lResiduals.open, sd)[-23]
+
+matplot(cbind(i, o), type='l', xaxt='n', lty=1:2, xlim=c(1, 22), ylab='Residual Standard Deviation')
+axis(side = 1, at = 1:length(i), labels=names(i), las=2)
+legend('topleft', legend = c('incumbent', 'open'), lty=1:2, col=1:2)
 
 
