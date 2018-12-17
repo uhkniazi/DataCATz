@@ -95,16 +95,65 @@ getms = function(f){
 
 iOrder = tapply(dfData$y, dfData$county.f, length)
 mCoef = mCoef[,order(iOrder)]
-
+mCoef.noPooling = mCoef
 ## format for line plots
 df = apply(mCoef, 2, getms)
 x = 1:ncol(mCoef)
+ylim=c(min(df), max(df))
 
 par(p.old)
-plot(x, df['m',], ylim=c(min(df), max(df)), pch=20, xlab='', main='Average Radon Levels No Pooling',
+plot(x, df['m',], ylim=ylim, pch=20, xlab='', main='Average Radon Levels No Pooling',
      ylab='Counties', xaxt='n')
 axis(1, at = x, labels = colnames(mCoef), las=2, cex.axis=0.7)
 for(l in 1:ncol(df)){
   lines(x=c(x[l], x[l]), y=df[c(2,3),l], lwd=0.5)
 }
 abline(h = iCompletePooling, col='grey')
+
+### partial pooling, multilevel model
+stanDso = rstan::stan_model(file='linearRegressionPartialPooling_1.stan')
+
+m = model.matrix(y ~ county.f - 1, data=dfData)
+
+lStanData = list(Ntotal=nrow(dfData), Ncol=ncol(m), X=m,
+                 y=dfData$y)
+
+fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('betas', 'populationMean', 'sigmaPop', 'sigmaRan'),
+                    cores=2)
+print(fit.stan, c('betas', 'populationMean', 'sigmaPop', 'sigmaRan'), digits=3)
+
+# some diagnostics for stan
+traceplot(fit.stan, c('sigmaPop'), ncol=1, inc_warmup=F)
+traceplot(fit.stan, c('sigmaRan'), ncol=1, inc_warmup=F)
+
+# fitted coefficients
+fit.stan.1.partialPooling = fit.stan
+
+mCoef = extract(fit.stan)$betas
+colnames(mCoef) = uniq
+
+iOrder = tapply(dfData$y, dfData$county.f, length)
+mCoef = mCoef[,order(iOrder)]
+mCoef.partialPooling = mCoef
+## format for line plots
+df = apply(mCoef, 2, getms)
+x = 1:ncol(mCoef)
+
+par(p.old)
+plot(x, df['m',], ylim=ylim, pch=20, xlab='', main='Average Radon Levels Partial Pooling',
+     ylab='Counties', xaxt='n')
+axis(1, at = x, labels = colnames(mCoef), las=2, cex.axis=0.7)
+for(l in 1:ncol(df)){
+  lines(x=c(x[l], x[l]), y=df[c(2,3),l], lwd=0.5)
+}
+abline(h = iCompletePooling, col='grey')
+
+## plot together? todo
+
+## check with lmer
+library(lme4)
+fit.lmer.1 = lmer(y ~ 1 + ( 1 | county.f), data=dfData)
+summary(fit.lmer.1)
+print(fit.stan.1.partialPooling, c('populationMean', 'sigmaPop', 'sigmaRan'), digits=3)
+print(fit.stan.1.noPooling, c('sigmaPop'), digits=3)
+
