@@ -43,3 +43,9 @@ usa.rows <- match (unique(srrs2.fips[mn]), usa.fips)
 uranium <- cty[usa.rows,"Uppm"]
 u <- log (uranium)
 ## end section for data formatting
+
+
+# Complete-pooling and no-pooling estimates of county radon levels
+# Consider the goal of estimating the distribution of
+# radon levels of the houses within each of the 85 counties in Minnesota.
+# page 252 onwards Gelman 2006 book
