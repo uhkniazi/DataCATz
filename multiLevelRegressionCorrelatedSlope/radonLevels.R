@@ -6,6 +6,8 @@
 
 
 # load and format the data
+library(LearnBayes)
+p.old = par()
 # see instructions for data download here
 # http://wiki.math.yorku.ca/index.php/Book:_Gelman_%26_Hill_%282007%29#Data_sets
 # data formatting
@@ -42,10 +44,67 @@ usa.fips <- 1000*cty[,"stfips"] + cty[,"ctfips"]
 usa.rows <- match (unique(srrs2.fips[mn]), usa.fips)
 uranium <- cty[usa.rows,"Uppm"]
 u <- log (uranium)
-## end section for data formatting
-
+## end section for data loading and formatting from external source
+county.name = gsub('^\\s+|\\s+$', '', county.name)
+uniq <- unique(county.name)
+dfData = data.frame(u.full = u[county], county.name, county,
+                    floor, log.radon, radon, uranium.full=uranium[county], x, y, county.f = factor(county))
 
 # Complete-pooling and no-pooling estimates of county radon levels
 # Consider the goal of estimating the distribution of
 # radon levels of the houses within each of the 85 counties in Minnesota.
 # page 252 onwards Gelman 2006 book
+## complete pooling
+iCompletePooling = mean(dfData$y)
+
+## no-pooling analysis
+library(rstan)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+
+stanDso = rstan::stan_model(file='linearRegressionNoPooling.stan')
+
+m = model.matrix(y ~ county.f - 1, data=dfData)
+
+lStanData = list(Ntotal=nrow(dfData), Ncol=ncol(m), X=m,
+                 y=dfData$y)
+
+fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('betas', 'mu', 'sigmaPop'),
+                    cores=2)
+print(fit.stan, c('betas', 'sigmaPop'), digits=3)
+
+# some diagnostics for stan
+traceplot(fit.stan, c('sigmaPop'), ncol=1, inc_warmup=F)
+
+# fitted coefficients
+fit.stan.1.noPooling = fit.stan
+
+mCoef = extract(fit.stan)$betas
+colnames(mCoef) = uniq
+
+## utility function for plotting
+getms = function(f){
+  m = mean(f)
+  se = sd(f)
+  m.up = m+1.96*se
+  m.down = m-1.96*se
+  ret= c(m, m.up, m.down)
+  names(ret) = c('m', 'm.up', 'm.down')
+  return(ret)
+}
+
+iOrder = tapply(dfData$y, dfData$county.f, length)
+mCoef = mCoef[,order(iOrder)]
+
+## format for line plots
+df = apply(mCoef, 2, getms)
+x = 1:ncol(mCoef)
+
+par(p.old)
+plot(x, df['m',], ylim=c(min(df), max(df)), pch=20, xlab='', main='Average Radon Levels No Pooling',
+     ylab='Counties', xaxt='n')
+axis(1, at = x, labels = colnames(mCoef), las=2, cex.axis=0.7)
+for(l in 1:ncol(df)){
+  lines(x=c(x[l], x[l]), y=df[c(2,3),l], lwd=0.5)
+}
+abline(h = iCompletePooling, col='grey')
