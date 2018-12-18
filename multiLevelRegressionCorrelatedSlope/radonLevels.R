@@ -282,13 +282,29 @@ iInformationContent = 100/ (var.ratio * 100) # around 1/5
 # all members of a group are identical. [Gelman 2006]
 var.county/(var.pop + var.county)
 
+#### add the floor predictor as a varying slope without correlation of slopes and intercepts
+fit.lmer.3 = lmer(y ~ 1 + x + ( 1 | county.f) + (0 + x | county.f), data=dfData)
+summary(fit.lmer.3)
 
 
+stanDso = rstan::stan_model(file='linearRegressionPartialPooling_3.stan')
 
+lStanData = list(Ntotal=nrow(dfData), 
+                 Ngroup1 = nlevels(dfData$county.f),
+                 Ngroup2 = nlevels(dfData$county.f),
+                 X=dfData$x,
+                 Ngroup1Map=as.numeric(dfData$county.f),
+                 Ngroup2Map=as.numeric(dfData$county.f),
+                 y=dfData$y)
 
-## check with lmer
-library(lme4)
-fit.lmer.1 = lmer(y ~ 1 + ( 1 | county.f), data=dfData)
-summary(fit.lmer.1)
-print(fit.stan.1.partialPooling, c('populationMean', 'sigmaPop', 'sigmaRan'), digits=3)
-print(fit.stan.1.noPooling, c('sigmaPop'), digits=3)
+fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('coefGroup1', 'coefGroup2', 
+                                                                         'MuPopGrp1', 'MuPopGrp2',
+                                                                          'sigmaPop',
+                                                                         'sigmaRan1', 'sigmaRan2'),
+                    cores=2)
+print(fit.stan, c('MuPopGrp1', 'MuPopGrp2', 'sigmaPop', 'sigmaRan1', 'sigmaRan2'), digits=3)
+
+# some diagnostics for stan
+traceplot(fit.stan, c('sigmaPop'), ncol=1, inc_warmup=F)
+traceplot(fit.stan, c('sigmaRan1'), ncol=1, inc_warmup=F)
+traceplot(fit.stan, c('sigmaRan2'), ncol=1, inc_warmup=F)
