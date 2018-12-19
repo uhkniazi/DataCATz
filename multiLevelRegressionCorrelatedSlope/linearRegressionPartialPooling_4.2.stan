@@ -9,33 +9,26 @@ data {
   // }
 parameters {
   // parameters to estimate in the model
-  vector[2] coefGroup1[Ngroup1]; // correlated coefficients
+  matrix[2, Ngroup1] coefGroup1; // correlated coefficients
   vector[2] MuPopGrp1; // population distribution
-  real<lower=-1, upper=1> rho; // correlation 
+  cholesky_factor_corr[2] cholGroup1;
   real<lower=0> sigmaPop; // data standard deviation
-  real<lower=0> sigmaRan1; // group level error for group 1
-  real<lower=0> sigmaRan2; // group level error for group 2
+  vector<lower=0>[2] sigmaRan1; // group level error for group 1
 }
 transformed parameters {
   vector[Ntotal] mu; // fitted values from linear predictor
+  matrix[2, Ngroup1] coefGroup1_adjusted;
+  coefGroup1_adjusted = diag_pre_multiply(sigmaRan1, cholGroup1) * coefGroup1;
   for (i in 1:Ntotal){
-    mu[i] = coefGroup1[Ngroup1Map[i]][1] + X[i] * coefGroup1[Ngroup1Map[i]][2];
+    mu[i] = MuPopGrp1[1] + coefGroup1_adjusted[1][Ngroup1Map[i]] + X[i] * (MuPopGrp1[2] + coefGroup1_adjusted[2][Ngroup1Map[i]]);
   }
 }
 model {
-  matrix[2, 2] mCov; // covariance matrix
   // using diffuse prior
   sigmaRan1 ~ cauchy(0, 2);
-  sigmaRan2 ~ cauchy(0, 2);
   sigmaPop ~ cauchy(0, 2);
-  mCov[1, 2] = rho*sigmaRan1*sigmaRan2;
-  mCov[2, 1] = mCov[1, 2];
-  mCov[1, 1] = sigmaRan1^2;
-  mCov[2, 2] = sigmaRan2^2;
-  // sample from the multi normal distribution
-  for (i in 1:Ngroup1){
-    coefGroup1[i] ~ multi_normal(MuPopGrp1, mCov);
-  }
+  cholGroup1 ~ lkj_corr_cholesky(2.0);
+  to_vector(coefGroup1) ~ normal(0, 1);
   // likelihood function
   y ~ normal(mu, sigmaPop);
 }

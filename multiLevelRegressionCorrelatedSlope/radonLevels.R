@@ -322,15 +322,35 @@ lStanData = list(Ntotal=nrow(dfData),
                  Ngroup1Map=as.numeric(dfData$county.f),
                  y=dfData$y)
 
-fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('coefGroup1', 
+fit.stan = sampling(stanDso, data=lStanData, iter=2000, chains=2, pars=c('coefGroup1', 
                                                                          'MuPopGrp1', 'rho',
                                                                          'sigmaPop',
                                                                          'sigmaRan1', 'sigmaRan2'),
-                    cores=2)
+                    cores=2, control=list(adapt_delta=0.99, max_treedepth = 10))
 print(fit.stan, c('MuPopGrp1', 'rho', 'sigmaPop', 'sigmaRan1', 'sigmaRan2'), digits=3)
 
 # some diagnostics for stan
 traceplot(fit.stan, c('sigmaPop'), ncol=1, inc_warmup=F)
 traceplot(fit.stan, c('sigmaRan1'), ncol=1, inc_warmup=F)
 traceplot(fit.stan, c('sigmaRan2'), ncol=1, inc_warmup=F)
+
+## try a different forumulation using cholesky factor decomposition of the correlation matrix
+stanDso = rstan::stan_model(file='linearRegressionPartialPooling_4.2.stan')
+
+lStanData = list(Ntotal=nrow(dfData), 
+                 Ngroup1 = nlevels(dfData$county.f),
+                 X=dfData$x,
+                 Ngroup1Map=as.numeric(dfData$county.f),
+                 y=dfData$y)
+
+fit.stan = sampling(stanDso, data=lStanData, iter=2000, chains=2, pars=c('coefGroup1_adjusted',
+                                                                         'MuPopGrp1',
+                                                                         'sigmaPop',
+                                                                         'sigmaRan1'),
+                    cores=2)
+print(fit.stan, c('MuPopGrp1', 'sigmaPop', 'sigmaRan1'), digits=3)
+
+# some diagnostics for stan
+traceplot(fit.stan, c('sigmaPop'), ncol=1, inc_warmup=F)
+traceplot(fit.stan, c('sigmaRan1'), ncol=1, inc_warmup=F)
 
