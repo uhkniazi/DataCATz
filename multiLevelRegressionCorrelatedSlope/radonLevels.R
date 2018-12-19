@@ -308,3 +308,29 @@ print(fit.stan, c('MuPopGrp1', 'MuPopGrp2', 'sigmaPop', 'sigmaRan1', 'sigmaRan2'
 traceplot(fit.stan, c('sigmaPop'), ncol=1, inc_warmup=F)
 traceplot(fit.stan, c('sigmaRan1'), ncol=1, inc_warmup=F)
 traceplot(fit.stan, c('sigmaRan2'), ncol=1, inc_warmup=F)
+
+##### varying coefficients i.e. intercept and slope with correlation
+fit.lmer.4 = lmer(y ~ 1 + x + ( 1 + x| county.f), data=dfData)
+summary(fit.lmer.4)
+
+
+stanDso = rstan::stan_model(file='linearRegressionPartialPooling_4.stan')
+
+lStanData = list(Ntotal=nrow(dfData), 
+                 Ngroup1 = nlevels(dfData$county.f),
+                 X=dfData$x,
+                 Ngroup1Map=as.numeric(dfData$county.f),
+                 y=dfData$y)
+
+fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('coefGroup1', 
+                                                                         'MuPopGrp1', 'rho',
+                                                                         'sigmaPop',
+                                                                         'sigmaRan1', 'sigmaRan2'),
+                    cores=2)
+print(fit.stan, c('MuPopGrp1', 'rho', 'sigmaPop', 'sigmaRan1', 'sigmaRan2'), digits=3)
+
+# some diagnostics for stan
+traceplot(fit.stan, c('sigmaPop'), ncol=1, inc_warmup=F)
+traceplot(fit.stan, c('sigmaRan1'), ncol=1, inc_warmup=F)
+traceplot(fit.stan, c('sigmaRan2'), ncol=1, inc_warmup=F)
+
