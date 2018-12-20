@@ -18,20 +18,14 @@ parameters {
 }
 transformed parameters {
   vector[Ntotal] mu; // fitted values from linear predictor
-  //matrix[2, Ngroup1] MuGroup1Means; // distribution centers for the deflections
   matrix[2, Ngroup1] coefGroup1_adjusted;
   coefGroup1_adjusted = diag_pre_multiply(sigmaRan1, cholGroup1) * coefGroup1;
-  // // group level model
-  // for (i in 1:Ngroup1){
-  //   MuGroup1Means[1, i] = populationCoeff[1] + populationCoeff[2] * Xg[i];
-  //   MuGroup1Means[2, i] = populationCoeff[3] + populationCoeff[4] * Xg[i];
-  // }
   for (i in 1:Ntotal){
     mu[i] = populationCoeff[1] + coefGroup1_adjusted[1][Ngroup1Map[i]] + // intercept + adjustment
     populationCoeff[2]*Xg[i]  +  // group level predictor slope
     X[i] * populationCoeff[3] +  // unit level slope
     X[i] * coefGroup1_adjusted[2][Ngroup1Map[i]] + // slope adjustment  
-    populationCoeff[4] * X[i] * Xg[i];
+    X[i] *populationCoeff[4] * Xg[i];
   }
 }
 model {
