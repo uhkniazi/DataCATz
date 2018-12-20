@@ -304,6 +304,9 @@ fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('coefGr
                     cores=2)
 print(fit.stan, c('MuPopGrp1', 'MuPopGrp2', 'sigmaPop', 'sigmaRan1', 'sigmaRan2'), digits=3)
 
+# fitted coefficients
+fit.stan.3.unCorCoef = fit.stan
+
 # some diagnostics for stan
 traceplot(fit.stan, c('sigmaPop'), ncol=1, inc_warmup=F)
 traceplot(fit.stan, c('sigmaRan1'), ncol=1, inc_warmup=F)
@@ -343,7 +346,7 @@ lStanData = list(Ntotal=nrow(dfData),
                  Ngroup1Map=as.numeric(dfData$county.f),
                  y=dfData$y)
 
-fit.stan = sampling(stanDso, data=lStanData, iter=2000, chains=2, pars=c('coefGroup1_adjusted',
+fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('coefGroup1_adjusted',
                                                                          'MuPopGrp1',
                                                                          'sigmaPop',
                                                                          'sigmaRan1'),
@@ -353,4 +356,46 @@ print(fit.stan, c('MuPopGrp1', 'sigmaPop', 'sigmaRan1'), digits=3)
 # some diagnostics for stan
 traceplot(fit.stan, c('sigmaPop'), ncol=1, inc_warmup=F)
 traceplot(fit.stan, c('sigmaRan1'), ncol=1, inc_warmup=F)
+
+# fitted coefficients
+fit.stan.4.CorCoef = fit.stan
+
+########## adding a group level predictor - uranium
+## this predictor only has one measurement per county, and should effect the variation
+## between counties i.e. the variance term sigmaRan
+# use the uranium.full variable which expands/maps the uranium variable to map to individual observations
+fit.lmer.5 = lmer(y ~ 1 + x + u.full + x:u.full + ( 1 + x| county.f), data=dfData)
+summary(fit.lmer.5)
+
+stanDso = rstan::stan_model(file='linearRegressionPartialPooling_5.stan')
+
+lStanData = list(Ntotal=nrow(dfData), 
+                 Ngroup1 = nlevels(dfData$county.f),
+                 X=dfData$x,
+                 Xg=dfData$u.full,
+                 Ngroup1Map=as.numeric(dfData$county.f),
+                 y=dfData$y)
+
+fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=2, pars=c('coefGroup1_adjusted',
+                                                                         'populationCoeff',
+                                                                         'sigmaPop',
+                                                                         'sigmaRan1'),
+                    cores=2)
+
+print(fit.stan, c('populationCoeff',
+                  'sigmaPop',
+                  'sigmaRan1'), digits=3)
+
+
+mCoef = extract(fit.stan)$betas
+colnames(mCoef) = c(uniq, 'floor')
+
+# calculate variance ratio
+print(fit.stan, c('sigmaPop', 'sigmaRan'))
+
+var.county = 0.33^2
+var.pop = 0.76^2
+
+var.ratio = round(var.county / var.pop, 2)
+
 
