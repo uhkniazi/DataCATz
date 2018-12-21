@@ -26,6 +26,7 @@ model {
   // using diffuse prior
   sigmaRan ~ cauchy(0, 2);
   sigmaPop ~ cauchy(0, 2);
+  populationMean ~ cauchy(0, 1);
   // vector expansion by mapping to a larger vector/array
   sigmaRan_expanded = sigmaRan[NBatchMap];
   populationMean_expanded = populationMean[NBatchMap];

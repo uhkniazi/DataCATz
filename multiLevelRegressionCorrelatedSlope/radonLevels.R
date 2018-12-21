@@ -299,7 +299,7 @@ lStanData = list(Ntotal=nrow(dfData), Ncol=ncol(m), X=m,
                                               rep(2, times=nlevels(dfData$county.f))),
                  y=dfData$y)
 
-fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('betas', 'populationMean', 'sigmaPop', 'sigmaRan'),
+fit.stan = sampling(stanDso, data=lStanData, iter=2000, chains=2, pars=c('betas', 'populationMean', 'sigmaPop', 'sigmaRan'),
                     cores=2)
 print(fit.stan, c('populationMean', 'sigmaPop', 'sigmaRan'), digits=3)
 
