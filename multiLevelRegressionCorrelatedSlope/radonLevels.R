@@ -234,6 +234,10 @@ lines(c(0, 1), cbind(c(1, 1), c(0, 1)) %*% m)
 
 # In the multilevel model, a “soft constraint” is applied to the α j ’s: they are as-
 # signed a probability distribution, [Gelman 2006]
+
+# this is a more general script, so the sigmaRan[2]
+# will not be estimated well as there is only one beta that
+# needs to be estimated for the slope as it is the population level
 stanDso = rstan::stan_model(file='linearRegressionPartialPooling_2.stan')
 
 m = model.matrix(y ~ county.f + x - 1, data=dfData)
@@ -286,7 +290,29 @@ var.county/(var.pop + var.county)
 fit.lmer.3 = lmer(y ~ 1 + x + ( 1 | county.f) + (0 + x | county.f), data=dfData)
 summary(fit.lmer.3)
 
+## first use earlier more general script then use a different
+## formulation for same model
+m = model.matrix(y ~ county.f + x:county.f - 1, data=dfData)
 
+lStanData = list(Ntotal=nrow(dfData), Ncol=ncol(m), X=m,
+                 NscaleBatches=2, NBatchMap=c(rep(1, times=nlevels(dfData$county.f)), 
+                                              rep(2, times=nlevels(dfData$county.f))),
+                 y=dfData$y)
+
+fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('betas', 'populationMean', 'sigmaPop', 'sigmaRan'),
+                    cores=2)
+print(fit.stan, c('populationMean', 'sigmaPop', 'sigmaRan'), digits=3)
+
+# some diagnostics for stan
+traceplot(fit.stan, c('sigmaPop'), ncol=1, inc_warmup=F)
+traceplot(fit.stan, c('sigmaRan'), ncol=1, inc_warmup=F)
+
+fit.stan.3.unCorCoef.1 = fit.stan
+mCoef = extract(fit.stan)$betas
+intercepts.1 = colMeans(mCoef[,1:85])
+slopes.1 = colMeans(mCoef[, 86:ncol(mCoef)])
+
+## try a second forumulation
 stanDso = rstan::stan_model(file='linearRegressionPartialPooling_3.stan')
 
 lStanData = list(Ntotal=nrow(dfData), 
@@ -305,12 +331,28 @@ fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('coefGr
 print(fit.stan, c('MuPopGrp1', 'MuPopGrp2', 'sigmaPop', 'sigmaRan1', 'sigmaRan2'), digits=3)
 
 # fitted coefficients
-fit.stan.3.unCorCoef = fit.stan
+fit.stan.3.unCorCoef.2 = fit.stan
 
 # some diagnostics for stan
 traceplot(fit.stan, c('sigmaPop'), ncol=1, inc_warmup=F)
 traceplot(fit.stan, c('sigmaRan1'), ncol=1, inc_warmup=F)
 traceplot(fit.stan, c('sigmaRan2'), ncol=1, inc_warmup=F)
+
+intercepts.2 = colMeans(extract(fit.stan)$coefGroup1)
+slopes.2 = colMeans(extract(fit.stan)$coefGroup2)
+
+# compare with lmer
+c = coef(fit.lmer.3)
+intercepts.lm = c$county.f[,1]
+slopes.lm = c$county.f[,2]
+
+par(mfrow=c(1,2))
+plot(intercepts.lm, intercepts.1, pch=20, main='intercepts')
+points(intercepts.lm, intercepts.2, pch=20, col=2)
+
+plot(slopes.lm, slopes.1, pch=20, main='slopes')
+points(slopes.lm, slopes.2, pch=20, col=2)
+
 
 ##### varying coefficients i.e. intercept and slope with correlation
 fit.lmer.4 = lmer(y ~ 1 + x + ( 1 + x| county.f), data=dfData)
