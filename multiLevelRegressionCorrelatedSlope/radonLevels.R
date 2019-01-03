@@ -186,6 +186,7 @@ fit.stan.2.noPooling = fit.stan
 
 mCoef = extract(fit.stan)$betas
 colnames(mCoef) = c(uniq, 'floor')
+mCoef.noPooling = mCoef
 
 par(mfrow=c(2,2))
 ylim = c(range(dfData$y))
@@ -259,9 +260,58 @@ fit.stan.2.partialPooling = fit.stan
 
 mCoef = extract(fit.stan)$betas
 colnames(mCoef) = c(uniq, 'floor')
+mCoef.partialPooling = mCoef
+
+par(mfrow=c(2,2))
+ylim = c(range(dfData$y))
+
+# choose some counties - figure 12.4 page 257
+df = subset(dfData, dfData$county.name == 'AITKIN')
+plot(jitter.binary(df$x), df$y, ylim=ylim, xlab='Floor', ylab='log Radon', main='AITKIN', pch=20)
+abline(fit.2.complete, lty=2)
+m = colMeans(mCoef.noPooling)
+m = m[c('AITKIN', 'floor')]
+lines(c(0, 1), cbind(c(1, 1), c(0, 1)) %*% m)
+m = colMeans(mCoef.partialPooling)
+m = m[c('AITKIN', 'floor')]
+lines(c(0, 1), cbind(c(1, 1), c(0, 1)) %*% m, col=2)
+
+
+
+df = subset(dfData, dfData$county.name == 'DOUGLAS')
+plot(jitter.binary(df$x), df$y, ylim=ylim, xlab='Floor', ylab='log Radon', main='DOUGLAS', pch=20)
+abline(fit.2.complete, lty=2)
+m = colMeans(mCoef.noPooling)
+m = m[c('DOUGLAS', 'floor')]
+lines(c(0, 1), cbind(c(1, 1), c(0, 1)) %*% m)
+m = colMeans(mCoef.partialPooling)
+m = m[c('DOUGLAS', 'floor')]
+lines(c(0, 1), cbind(c(1, 1), c(0, 1)) %*% m, col=2)
+
+
+df = subset(dfData, dfData$county.name == 'CLAY')
+plot(jitter.binary(df$x), df$y, ylim=ylim, xlab='Floor', ylab='log Radon', main='CLAY', pch=20)
+abline(fit.2.complete, lty=2)
+m = colMeans(mCoef.noPooling)
+m = m[c('CLAY', 'floor')]
+lines(c(0, 1), cbind(c(1, 1), c(0, 1)) %*% m)
+m = colMeans(mCoef.partialPooling)
+m = m[c('CLAY', 'floor')]
+lines(c(0, 1), cbind(c(1, 1), c(0, 1)) %*% m, col=2)
+
+df = subset(dfData, dfData$county.name == 'ST LOUIS')
+plot(jitter.binary(df$x), df$y, ylim=ylim, xlab='Floor', ylab='log Radon', main='ST LOUIS', pch=20)
+abline(fit.2.complete, lty=2)
+m = colMeans(mCoef.noPooling)
+m = m[c('ST LOUIS', 'floor')]
+lines(c(0, 1), cbind(c(1, 1), c(0, 1)) %*% m)
+m = colMeans(mCoef.partialPooling)
+m = m[c('ST LOUIS', 'floor')]
+lines(c(0, 1), cbind(c(1, 1), c(0, 1)) %*% m, col=2)
+
 
 # calculate variance ratio
-print(fit.stan, c('sigmaPop', 'sigmaRan'))
+print(fit.stan, c('sigmaPop', 'sigmaRan[1]'))
 
 var.county = 0.33^2
 var.pop = 0.76^2
@@ -285,6 +335,11 @@ iInformationContent = 100/ (var.ratio * 100) # around 1/5
 # which ranges from 0 if the grouping conveys no information to 1 if
 # all members of a group are identical. [Gelman 2006]
 var.county/(var.pop + var.county)
+
+## using lmer
+fit.lmer.2 = lmer(y ~ 1 + x + ( 1 | county.f), data=dfData)
+summary(fit.lmer.2)
+
 
 #### add the floor predictor as a varying slope without correlation of slopes and intercepts
 fit.lmer.3 = lmer(y ~ 1 + x + ( 1 | county.f) + (0 + x | county.f), data=dfData)
