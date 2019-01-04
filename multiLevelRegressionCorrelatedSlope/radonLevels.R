@@ -422,11 +422,11 @@ lStanData = list(Ntotal=nrow(dfData),
                  Ngroup1Map=as.numeric(dfData$county.f),
                  y=dfData$y)
 
-fit.stan = sampling(stanDso, data=lStanData, iter=2000, chains=2, pars=c('coefGroup1', 
+fit.stan = sampling(stanDso, data=lStanData, iter=2000, chains=4, pars=c('coefGroup1', 
                                                                          'MuPopGrp1', 'rho',
                                                                          'sigmaPop',
                                                                          'sigmaRan1', 'sigmaRan2'),
-                    cores=2, control=list(adapt_delta=0.99, max_treedepth = 10))
+                    cores=4, control=list(adapt_delta=0.99, max_treedepth = 10))
 print(fit.stan, c('MuPopGrp1', 'rho', 'sigmaPop', 'sigmaRan1', 'sigmaRan2'), digits=3)
 
 # some diagnostics for stan
@@ -443,11 +443,11 @@ lStanData = list(Ntotal=nrow(dfData),
                  Ngroup1Map=as.numeric(dfData$county.f),
                  y=dfData$y)
 
-fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('coefGroup1_adjusted',
+fit.stan = sampling(stanDso, data=lStanData, iter=3000, chains=4, pars=c('coefGroup1_adjusted',
                                                                          'MuPopGrp1',
                                                                          'sigmaPop',
                                                                          'sigmaRan1'),
-                    cores=2)
+                    cores=4)
 print(fit.stan, c('MuPopGrp1', 'sigmaPop', 'sigmaRan1'), digits=3)
 
 # some diagnostics for stan
@@ -473,26 +473,68 @@ lStanData = list(Ntotal=nrow(dfData),
                  Ngroup1Map=as.numeric(dfData$county.f),
                  y=dfData$y)
 
-fit.stan = sampling(stanDso, data=lStanData, iter=1000, chains=2, pars=c('coefGroup1_adjusted',
+fit.stan = sampling(stanDso, data=lStanData, iter=2000, chains=4, pars=c('coefGroup1_adjusted',
                                                                          'populationCoeff',
                                                                          'sigmaPop',
                                                                          'sigmaRan1'),
-                    cores=2)
+                    cores=4)
 
 print(fit.stan, c('populationCoeff',
                   'sigmaPop',
                   'sigmaRan1'), digits=3)
 
 
-mCoef = extract(fit.stan)$betas
-colnames(mCoef) = c(uniq, 'floor')
+mAdjustments = extract(fit.stan)$coefGroup1_adjusted
+mAdjustments.intercepts = mAdjustments[,1,]
+mAdjustments.slopes = mAdjustments[,2,]
 
-# calculate variance ratio
-print(fit.stan, c('sigmaPop', 'sigmaRan'))
+# compare with lmer
+c = ranef(fit.lmer.5)
+intercepts.lm = c$county.f[,1]
+slopes.lm = c$county.f[,2]
 
-var.county = 0.33^2
-var.pop = 0.76^2
+par(mfrow=c(1,2))
+plot(intercepts.lm, colMeans(mAdjustments.intercepts), pch=20, xlab='lmer', ylab='stan', main='comparisons of intercepts')
+plot(slopes.lm, colMeans(mAdjustments.slopes), pch=20, xlab='lmer', ylab='stan', main='comparisons of slopes')
+
+# extract population coefficients
+mPop = extract(fit.stan)$populationCoeff
+colMeans(mPop)
+colMeans(mAdjustments.intercepts)[85]
+colMeans(mAdjustments.slopes)[85]
+# county 85 results
+# level 2 model - intercept
+cbind(1, 1, u[85]) %*% rbind(1.46, -0.03, 0.8)
+# level 2 model - slope
+cbind(1, 1, u[85]) %*% rbind(-0.66, -0.001, 1*u[85]*-0.39)
+
+# # intercepts for each group
+mInt = mPop[,c(1,2)]
+mX = cbind(rep(1, times=nlevels(dfData$county.f)), u)
+mInt = mX %*% t(mInt)
+iPop.int = colMeans(mPop)[1:2]
+grid = seq(range(u)[1], range(u)[2], length.out = 100)
+y = cbind(rep(1, times=100), grid) %*% cbind(iPop.int)
+## format for line plots
+mCoef = t(mInt)
+plot(grid, y, type='l', ylim=range((mCoef)), xlab='county log uranium',
+     ylab='county intercepts')
+
+for (i in 1:85){
+  mCoef[,i] = cbind(1, 1, u[i]) %*% rbind(mPop[,1], mAdjustments.intercepts[,i], mPop[,2])
+}
+# order according to increasing uranium
+i = order(u)
+mCoef = mCoef[,i]
+df = apply(mCoef, 2, getms)
+x = u[i]
+points(x, colMeans(mCoef), pch=20)
+for(l in 1:ncol(df)){
+  lines(x=c(x[l], x[l]), y=df[c(2,3),l], lwd=0.5)
+}
+
+var.county = 0.13^2
+var.pop = 0.75^2
 
 var.ratio = round(var.county / var.pop, 2)
-
-
+iInformationContent = 100/ (var.ratio * 100)
