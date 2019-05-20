@@ -41,7 +41,16 @@ simPostPredictPoisson = function(post, exposure, len, nc=20){
   return(mDraws)
 }
 
-## no-pooling analysis
+ebayes.prior = getalphabeta.poisson(dfData$y)
+fit.2 = simGammaPost(dfData$y, dfData$e, ebayes.prior)
+
+mSim.fit.1 = simulate(fit.1, 20)
+mSim.fit.2 = simPostPredictPoisson(fit.2, dfData$e, nrow(dfData), 20)
+hist(dfData$y, xlab='', ylab='', main='', prob=T)
+temp = apply(mSim.fit.1, 2, function(x) lines(density(x), col='green'))
+temp = apply(mSim.fit.2, 2, function(x) lines(density(x), col='blue'))
+
+## complete pooling analysis
 library(rstan)
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
@@ -55,8 +64,95 @@ lStanData = list(Ntotal=nrow(dfData), Ncol=ncol(m), X=m, offset=log(dfData$e),
 
 fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('betas', 'mu'),
                     cores=2)
-print(fit.stan, c('betas', 'mu'), digits=3)
+print(fit.stan, c('betas'), digits=3)
 
+mFitted = extract(fit.stan)$mu
+mFitted = mFitted[sample(1:ncol(mFitted), 20, replace = F),]
+mSim.fit.stan = apply(mFitted, 1, function(x){
+  return(rpois(length(x), exp(x)))
+})
+
+temp = apply(mSim.fit.stan, 2, function(x) lines(density(x), col='red'))
+
+###########################################################################################################
+########## Second analysis with adding grouping information, includes no pooling and partial pooling
+###########################################################################################################
+fit.1.2 = glm(y ~ 1 + hospital , data=dfData, family='poisson', offset=log(e))
+summary(fit.1.2)
+anova(fit.1, fit.1.2)
+
+fit.2.2 = sapply(1:nrow(dfData), function(x){
+  return(simGammaPost(dfData$y[x], dfData$e[x], ebayes.prior))
+})
+
+
+simPostPredictPoisson2 = function(post, exposure, len, nc=20){
+  mDraws = matrix(NA, nrow = len, ncol=nc)
+  for (i in 1:nc){
+    p = sample(1:nrow(post), size = 1)
+    mDraws[,i] = rpois(len, post[p,] * exposure)
+  }
+  return(mDraws)
+}
+
+mSim.fit.1.2 = simulate(fit.1.2, 20)
+mSim.fit.2.2 = simPostPredictPoisson2(fit.2.2, dfData$e, nrow(dfData), 20)
+hist(dfData$y, xlab='', ylab='', main='', prob=T)
+temp = apply(mSim.fit.1.2, 2, function(x) lines(density(x), col='green'))
+temp = apply(mSim.fit.2.2, 2, function(x) lines(density(x), col='blue'))
+
+## no pooling analysis
+m = model.matrix(y ~ 1 + hospital, data=dfData)
+
+lStanData = list(Ntotal=nrow(dfData), Ncol=ncol(m), X=m, offset=log(dfData$e),
+                 y=dfData$y)
+
+fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('betas', 'mu'),
+                    cores=2)
+print(fit.stan, c('betas'), digits=3)
+
+mFitted = extract(fit.stan)$mu
+dim(mFitted)
+mFitted = mFitted[sample(1:ncol(mFitted), 20, replace = F),]
+mSim.fit.stan = apply(mFitted, 1, function(x){
+  return(rpois(length(x), exp(x)))
+})
+
+temp = apply(mSim.fit.stan, 2, function(x) lines(density(x), col='red'))
+
+### partial pooling, multilevel model
+stanDso = rstan::stan_model(file='poissonRegressionPartialPooling_1.stan')
+
+m = model.matrix(y ~ hospital - 1, data=dfData)
+
+lStanData = list(Ntotal=nrow(dfData), Ncol=ncol(m), X=m, offset=log(dfData$e),
+                 y=dfData$y)
+
+fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('populationMean', 'sigmaRan', 'betas', 'mu'),
+                    cores=2)
+print(fit.stan, c('betas', 'populationMean', 'sigmaRan'), digits=3)
+
+pairs(fit.stan, pars = c("sigmaRan", "populationMean", "lp__"))
+# some diagnostics for stan
+traceplot(fit.stan, c('sigmaRan'), ncol=1, inc_warmup=F)
+traceplot(fit.stan, c('populationMean'), ncol=1, inc_warmup=F)
+
+library(lme4)
+fit.lme = glmer(y ~ 1 + (1 | hospital), offset=log(dfData$e), data=dfData, family=poisson(link = "log"))
+## compare lme4 and stan
+summary(fit.lme)
+
+## plot posterior predictive values
+mFitted = extract(fit.stan)$mu
+dim(mFitted)
+mFitted = mFitted[sample(1:ncol(mFitted), 20, replace = F),]
+mSim.fit.stan = apply(mFitted, 1, function(x){
+  return(rpois(length(x), exp(x)))
+})
+
+temp = apply(mSim.fit.stan, 2, function(x) lines(density(x), col='yellow2'))
+
+## can we replicate the figure from the book
 
 
 
