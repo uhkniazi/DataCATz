@@ -67,7 +67,7 @@ fit.stan = sampling(stanDso, data=lStanData, iter=5000, chains=2, pars=c('betas'
 print(fit.stan, c('betas'), digits=3)
 
 mFitted = extract(fit.stan)$mu
-mFitted = mFitted[sample(1:ncol(mFitted), 20, replace = F),]
+mFitted = mFitted[sample(1:nrow(mFitted), 20, replace = F),]
 mSim.fit.stan = apply(mFitted, 1, function(x){
   return(rpois(length(x), exp(x)))
 })
@@ -113,7 +113,7 @@ print(fit.stan, c('betas'), digits=3)
 
 mFitted = extract(fit.stan)$mu
 dim(mFitted)
-mFitted = mFitted[sample(1:ncol(mFitted), 20, replace = F),]
+mFitted = mFitted[sample(1:nrow(mFitted), 20, replace = F),]
 mSim.fit.stan = apply(mFitted, 1, function(x){
   return(rpois(length(x), exp(x)))
 })
@@ -145,7 +145,7 @@ summary(fit.lme)
 ## plot posterior predictive values
 mFitted = extract(fit.stan)$mu
 dim(mFitted)
-mFitted = mFitted[sample(1:ncol(mFitted), 20, replace = F),]
+mFitted = mFitted[sample(1:nrow(mFitted), 20, replace = F),]
 mSim.fit.stan = apply(mFitted, 1, function(x){
   return(rpois(length(x), exp(x)))
 })
@@ -153,8 +153,29 @@ mSim.fit.stan = apply(mFitted, 1, function(x){
 temp = apply(mSim.fit.stan, 2, function(x) lines(density(x), col='yellow2'))
 
 ## can we replicate the figure from the book
+## complete pooling
+mSim.fit.1 = simulate(fit.1, 1000)
+mSim.fit.2 = simPostPredictPoisson(fit.2, dfData$e, nrow(dfData), 1000)
 
+par(mfrow=c(1,3))
+hist(as.numeric(mSim.fit.1[94,]))
+abline(v = dfData$y[94])
+hist(as.numeric(mSim.fit.2[94,]))
+abline(v = dfData$y[94])
+hist(mSim.fit.stan[94,])
+abline(v = dfData$y[94])
 
+## no pooling
+mSim.fit.1.2 = simulate(fit.1.2, 1000)
+mSim.fit.2.2 = simPostPredictPoisson2(fit.2.2, dfData$e, nrow(dfData), 1000) 
 
+hist(as.numeric(mSim.fit.1.2[94,]))
+abline(v = dfData$y[94])
+hist(as.numeric(mSim.fit.2.2[94,]))
+abline(v = dfData$y[94])
+hist(mSim.fit.stan[94,])
+abline(v = dfData$y[94])
+
+## partial pooling
 
 
