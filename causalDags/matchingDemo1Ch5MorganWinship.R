@@ -8,6 +8,7 @@
 
 
 # propensity score function
+# P(D = 1 | S) calculated from table 5.1 
 score = function(S){
   if (S == 1) {
     return(0.18)
@@ -22,6 +23,7 @@ score = function(S){
 
 # generate a data vector
 set.seed(123)
+# P(S) marginal probability of S
 S = sample(c(1, 2, 3), size = 100, replace = T, prob = c(0.44, 0.24, 0.32))
 
 # counter-factual data
@@ -98,19 +100,33 @@ mean(y[d==1 & S==3])*0.32 - mean(y[d==0 & S==3]) * 0.32 # P(S=3)
 3*0.4 + 2.4*0.6 
 
 ## try regression technique
-dfData = data.frame(y, d=factor(d), S=factor(S), y1, y0, p=ps)
+## weighting formulas to convert from propensity score
+## to ATE, ATC, ATE - see sections 7.1 and 7.2 - winship book
+dfData = data.frame(y, d=factor(d), S=factor(S), y1, y0, p=ps, 
+                    p.ate=ifelse(d==1, 1/ps, 1/(1-ps)),
+                    p.att=ifelse(d==1, 1, ps/(1-ps)),
+                    p.atc=ifelse(d==1, (1-ps)/ps, 1))
 summary(dfData)
 
+# naive estimator
 f1 = lm(y ~ d, data=dfData)
 summary(f1)
 
+# ATE 
 f2 = lm(y ~ d + S, data=dfData)
 summary(f2)
 
-f3 = lm(y ~ d + S, data=dfData, weights=1-p)
+# ATE after weighting 
+f2.w = lm(y ~ d + S, data=dfData, weights = p.ate)
+summary(f2.w)
+
+
+# ATC after weighting 
+f3 = lm(y ~ d + S, data=dfData, weights=p.atc)
 summary(f3)
 
-f4 = lm(y ~ d + S, data=dfData, weights=p)
+# ATT after weighting 
+f4 = lm(y ~ d + S, data=dfData, weights=p.att)
 summary(f4)
 
 library(arm)
@@ -123,17 +139,26 @@ matched = as.logical(matches$cnts)
 dfData.matched = dfData[matched,]
 dim(dfData.matched)
 
+# naive estimator after matching
 f5 = lm(y ~ d, data=dfData.matched)
 summary(f5)
 
+# ATE
 f6 = lm(y ~ d + S, data=dfData.matched)
 summary(f6)
 
-f7 = lm(y ~ d, weights = p, data=dfData.matched)
-summary(f7)
+f6.w = lm(y ~ d + S, data=dfData.matched, weights = p.ate)
+summary(f6.w)
 
-f8 = lm(y ~ d + S, weights=p, data=dfData.matched)
+
+# naive estimator, matched and weighted
+# f7 = lm(y ~ d, weights = p.atc, data=dfData.matched)
+# summary(f7)
+
+# ATT, matched and weighted
+f8 = lm(y ~ d + S, weights=p.att, data=dfData.matched)
 summary(f8)
 
-f8 = lm(y ~ d + S, weights=1-p, data=dfData.matched)
-summary(f8)
+# ATC, matched and weighted
+f9 = lm(y ~ d + S, weights=p.atc, data=dfData.matched)
+summary(f9)
