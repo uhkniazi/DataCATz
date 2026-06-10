@@ -120,3 +120,10 @@ legend("topleft",
        legend=c("True", "Logistic", "CRM"),
        col=c("black", "blue", "red"),
        lwd=2)
+
+
+### decision step (what trial actually does)
+target <- 0.25
+
+abs_diff <- abs(colMeans(p_post_crm) - target)
+which.min(abs_diff)
