@@ -127,3 +127,87 @@ target <- 0.25
 
 abs_diff <- abs(colMeans(p_post_crm) - target)
 which.min(abs_diff)
+
+
+#############################################################
+###### second version of models with a hierarchical binomial model
+library(rethinking)
+set.seed(42)
+
+# 1. Simulate Trial Data
+d <- rep(1:5, each = 10)   # 50 patients total
+p_true <- c(0.05, 0.10, 0.20, 0.30, 0.45) # Unknown in real life
+## toxicities at different doses, based on the probabilities
+y <- rbinom(length(d), size = 1, prob = p_true[d])
+
+# 2. Setup Data Lists
+dat <- list(y = y, d = as.numeric(d))
+q <- c(0.05, 0.10, 0.20, 0.35, 0.50) # Clinical Skeleton Prior
+
+# ==========================================
+# MODEL 1: Standard Logistic Regression
+# ==========================================
+m_logistic <- quap(
+  alist(
+    y ~ dbinom(1, p),
+    logit(p) <- a + b * d,
+    a ~ dcauchy(0, 2.5),
+    b ~ dcauchy(0, 2.5)
+  ), data = dat
+)
+## posterior predictive simulation
+p_post_logistic <- sapply(1:5, function(dose) plogis(extract.samples(m_logistic)$a + extract.samples(m_logistic)$b * dose))
+
+# ==========================================
+# MODEL 2: Classic CRM (Power Model)
+# ==========================================
+dat_crm <- list(y = y, d = d, log_q = log(q[d]))
+m_crm <- quap(
+  alist(
+    y ~ dbinom(1, p),
+    p <- exp(log_q * exp(theta)),
+    theta ~ dnorm(0, 1)
+  ), data = dat_crm, start = list(theta = 0)
+)
+post_crm <- extract.samples(m_crm)
+p_post_crm <- sapply(1:5, function(dose) q[dose]^exp(post_crm$theta))
+
+# ==========================================
+# MODEL 3: YOUR IDEA (Beta-Weight Skeleton as Group Priors)
+# ==========================================
+# Convert skeleton probabilities to logit scale coordinates
+logit_q <- logit(q) 
+
+dat_bws <- list(y = y, d = d)
+
+m_bws <- quap(
+  alist(
+    y ~ dbinom(1, p),
+    logit(p) <- a[d],
+    # 5 independent group priors tightly locked around the skeleton positions
+    a[1] ~ dnorm(-2.94, 0.2), # logit(0.05)
+    a[2] ~ dnorm(-2.20, 0.2), # logit(0.10)
+    a[3] ~ dnorm(-1.38, 0.2), # logit(0.20)
+    a[4] ~ dnorm(-0.62, 0.2), # logit(0.35)
+    a[5] ~ dnorm(0.00, 0.2)   # logit(0.50)
+  ), data = dat_bws, start = list(a = logit_q)
+)
+p_post_bws <- plogis(extract.samples(m_bws, depth=2)$a)
+
+# ==========================================
+# VISUALIZATION & COMPARISON
+# ==========================================
+plot(1:5, p_true, type="b", pch=16, ylim=c(0,0.6), xlab="Dose", ylab="Toxicity prob", main="Model Comparison vs Truth")
+lines(1:5, colMeans(p_post_logistic), col="blue", lwd=2)
+lines(1:5, colMeans(p_post_crm), col="red", lwd=2)
+lines(1:5, colMeans(p_post_bws), col="darkgreen", lwd=2) # Your model
+
+legend("topleft", legend=c("True", "Logistic", "CRM", "Your Model (BWS)"),
+       col=c("black", "blue", "red", "darkgreen"), lwd=2)
+
+# ==========================================
+# FINAL TRIAL DECISIONS
+# ==========================================
+target <- 0.25
+cat("CRM MTD Recommendation:", which.min(abs(colMeans(p_post_crm) - target)), "\n")
+cat("Your Model MTD Recommendation:", which.min(abs(colMeans(p_post_bws) - target)), "\n")
