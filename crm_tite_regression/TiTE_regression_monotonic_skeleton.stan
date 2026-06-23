@@ -1,3 +1,10 @@
+// Name: TiTE_regression_monotonic_skeleton.stan
+// Auth: u.niazi@soton.ac.uk
+// Date: 23/06/2026
+// Desc: TiTE-CRM Model with skeleton dose toxicity priors, maintaining
+//       monotonic behaviour of toxicity prediction and using covariates
+//       to adjust dose predictions for vulnerable subjects.
+
 data {
   int<lower=1> Ntotal;                  // Total number of patients observed so far
   int<lower=1> Ncol;                    // Total columns in design matrix (5 dose indicators + covariates)

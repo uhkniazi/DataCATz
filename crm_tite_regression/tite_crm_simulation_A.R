@@ -1,8 +1,9 @@
-# Name: tite_crm_simulation_B.R
+# Name: tite_crm_simulation_A.R
 # Auth: u.niazi@soton.ac.uk
 # Date: 23/06/2026
 # Desc: TiTE-CRM Models used in Phase 1 clinical trials to assess dosage based
-#       on toxicity skeleton. Simulation for Scenario B (correct skeleton + covariate effects)
+#       on toxicity skeleton. Simulation for Scenario A (The "Do No Harm" Check: 
+#       Covariates are completely irrelevant, skeleton is globally correct)
 
 library(dfcrm)
 library(trialr)
@@ -40,7 +41,7 @@ compiled_stan_model <- rstan::stan_model(file = "TiTE_regression_monotonic_skele
 # 3. GLOBAL EXPERIMENTAL CONFIGURATION
 # ==============================================================================
 set.seed(42)
-N_sims     <- 200  # Total trials simulated across the parallel cluster
+N_sims     <- 200  # Rigorous evaluation size to ensure statistical stability
 N_patients <- 20   # Sample size per individual clinical trial
 T_max      <- 28   # DLT evaluation window (28 days)
 target_dlt <- 0.25 # The Maximum Tolerated Dose target (25% toxicity rate)
@@ -49,10 +50,10 @@ target_dlt <- 0.25 # The Maximum Tolerated Dose target (25% toxicity rate)
 q_skeleton <- c(0.05, 0.12, 0.25, 0.40, 0.55)
 logit_q    <- qlogis(q_skeleton) # Convert skeleton risks to logit scale for Stan priors
 
-# --- BIOLOGICAL TRUTH PARAMETERS (Scenario B: Skeleton is Globally Correct) ---
+# --- BIOLOGICAL TRUTH PARAMETERS (Scenario A: Covariates have ZERO effect) ---
 true_alpha <- qlogis(c(0.05, 0.12, 0.25, 0.40, 0.55)) 
-true_b_sex <- 0.8   # Females have +0.8 higher log-odds of experiencing a DLT
-true_b_bmi <- -0.3  # Every unit increase in BMI reduces DLT log-odds by -0.3
+true_b_sex <- 0.0   # [Scenario A Baseline] Females have 0.0 log-odds change (No Effect)
+true_b_bmi <- 0.0   # [Scenario A Baseline] BMI changes shift log-odds by 0.0 (No Effect)
 
 # [Mathematical Formula] Calculate a patient's true biological probability of a DLT
 get_true_risk <- function(dose, female, bmi_centered, true_alpha, true_b_sex, true_b_bmi) {
@@ -71,7 +72,7 @@ get_true_optimal_dose <- function(female, bmi_centered, true_alpha, true_b_sex, 
 # [Trial Simulator] Simulates real-time patient outcomes and delayed DLT time-to-events
 simulate_patient_outcome <- function(dose, female, bmi_centered, arrival_day, T_max, true_alpha, true_b_sex, true_b_bmi) {
   p_true  <- get_true_risk(dose, female, bmi_centered, true_alpha, true_b_sex, true_b_bmi)
-  dlt     <- rbinom(1, 1, p_true) # Coin flip using the patient's true personalized probability
+  dlt     <- rbinom(1, 1, p_true) # Coin flip using the patient's true uniform population probability
   
   # If a DLT occurs, it happens randomly between days 1 and 24. If not, they clear T_max (28 days)
   clearance_day <- arrival_day + ifelse(dlt == 1, sample(1:24, 1), T_max)
@@ -101,6 +102,7 @@ run_single_trial_simulation <- function(sim_id, compiled_stan_model, N_patients,
   patients$bmi_centered <- patients$bmi_raw - 26
   
   # Calculate the exact personalized dose target for every patient entering this specific trial
+  # In Scenario A, because beta=0, every single patient's true optimal dose will safely collapse to Dose 3.
   patients$true_optimal <- sapply(1:N_patients, function(idx) {
     get_true_optimal_dose(patients$female[idx], patients$bmi_centered[idx], true_alpha, true_b_sex, true_b_bmi, target_dlt)
   })
@@ -178,7 +180,7 @@ run_single_trial_simulation <- function(sim_id, compiled_stan_model, N_patients,
     
     # ==========================================================================
     # FRAMEWORK 4: CUSTOM COVARIATE-PERSONALIZED MODEL (M5Cov)
-    # ==========================================================================
+    # ==============================================================================
     # [Clinical Decision] Enforce safety baseline: Patient 1 starts at Dose 1.
     if (i == 1) { d_m5cov[i] <- 1 } else {
       days_on_study <- pmin(current_time - patients$arrival_day[comp], T_max)
@@ -194,7 +196,8 @@ run_single_trial_simulation <- function(sim_id, compiled_stan_model, N_patients,
       cov_alpha     <- extracted_c$alpha     
       cov_beta_cov  <- extracted_c$beta_cov  
       
-      # [Personalization Logic] Project the posterior toxicity curve tailored exclusively to the i-th patient's profile
+      # [Personalization Logic] Project the posterior toxicity curve tailored to the i-th patient's profile.
+      # In Scenario A, the model should ideally learn that cov_beta_cov values hover near 0.
       pred_c        <- sapply(1:5, function(d) {
         mean(plogis(cov_alpha[, d] + (cov_beta_cov[, 1] * patients$female[i]) + (cov_beta_cov[, 2] * patients$bmi_centered[i])))
       })
@@ -246,7 +249,7 @@ run_single_trial_simulation <- function(sim_id, compiled_stan_model, N_patients,
 # ==============================================================================
 # Set up worker count: Consume maximum available processing threads minus 4 to prevent system lockups
 num_workers <- min(detectCores() - 4, N_sims)
-cat(sprintf("\nLaunching parallel cluster across %d workers...\n", num_workers))
+cat(sprintf("\nLaunching parallel cluster across %d workers for Scenario A...\n", num_workers))
 
 cl <- parallel::makeCluster(num_workers)
 # Load libraries inside each separate sub-process environment
@@ -297,7 +300,7 @@ all_demographics <- do.call(rbind, lapply(raw_parallel_results, function(x) x$de
 fragile_cohort   <- all_demographics[all_demographics$female == 1 & all_demographics$bmi < 22, ]
 
 cat("\n========================================================================\n")
-cat("          PRODUCTION SCORECARD: METHODOLOGY EVALUATION                  \n")
+cat("          PRODUCTION SCORECARD: SCENARIO A EVALUATION (DO NO HARM)      \n")
 cat("========================================================================\n")
 
 # [Pseudocode] Construct summary data frame, average figures across runs, and print output
@@ -305,8 +308,8 @@ oc_summary <- data.frame(
   Framework             = c("dfcrm (MLE)", "trialr (MCMC)", "M5Base (Pure Pop)", "M5Cov (Personalized)"),
   
   # Global MTD Accuracy measures how often the last assigned dose is exactly Dose 3.
-  # Note: Left as NA for M5Cov because a personalized model recommends client-specific targets 
-  # rather than forcing a single population index.
+  # Note: Left as NA for M5Cov because a personalized model is conceptually designed to 
+  # bypass population-level metrics.
   Global_MTD_Accuracy   = c(mean(final_mtd_dfcrm == 3), mean(final_mtd_trialr == 3), mean(final_mtd_m5base == 3), NA) * 100,
   
   Exact_Personal_Acc    = c(mean(p_acc_dfcrm), mean(p_acc_trialr), mean(p_acc_m5base), mean(p_acc_m5cov)),
@@ -318,9 +321,9 @@ oc_summary <- data.frame(
 oc_summary[, 2:6] <- round(oc_summary[, 2:6], 2)
 print(oc_summary)
 
-cat("\n------------------ ADVANCED PERSONALIZATION ADVANTAGE ------------------\n")
+cat("\n------------------ SCENARIO A PROOF OF EQUIVALENCE ---------------------\n")
 if (nrow(fragile_cohort) > 0) {
-  # Compares how many high-risk patients suffered toxicities under population methods vs. personalized methods
+  # In Scenario A, these rates should converge closely, proving the covariate adjustment safely "turns off"
   cat(sprintf("DLT Rate in Fragile Cohort (Low-BMI Female) under M5Base : %.1f%%\n", mean(fragile_cohort$y_base) * 100))
   cat(sprintf("DLT Rate in Fragile Cohort (Low-BMI Female) under M5Cov  : %.1f%%\n", mean(fragile_cohort$y_cov) * 100))
 }
