@@ -225,3 +225,110 @@ alpha_summary[, "True_Skeleton"] <- skeleton
 
 cat("\n=== DOSE INTERCEPT RECOVERY (Target Skeleton Probabilities) ===\n")
 print(round(alpha_summary, 3))
+
+# ==============================================================================
+# COMPARISON: STANDARD BINOMIAL REGRESSION vs BIOTITE
+# ==============================================================================
+
+compiled_standard <- rstan::stan_model(file='binomialRegression.stan')
+
+# 2. Fit Standard Model on df_sim
+stan_data_std <- list(
+  Ntotal = stan_data$Ntotal,
+  Ncol   = stan_data$Ncol,
+  X      = stan_data$X,
+  y      = stan_data$y
+)
+
+fit_standard <- rstan::sampling(
+  compiled_standard,
+  data    = stan_data_std,
+  iter    = 2000,
+  warmup  = 1000,
+  chains  = 4,
+  refresh = 0
+)
+
+print(fit_standard, digits=3, pars = 'betas')
+traceplot(fit_standard, pars='betas')
+
+# ==============================================================================
+# POSTERIOR EXTRACTION & MONOTONICITY DIAGNOSTICS
+# ==============================================================================
+ext_std <- rstan::extract(fit_standard)
+
+# 1. Extract Gene Coefficients (Columns 6:10)
+beta_std <- ext_std$betas[, 6:10]
+summary_std_genes <- t(apply(beta_std, 2, function(x) {
+  c(Mean = mean(x), SD = sd(x), `2.5%` = quantile(x, 0.025), `97.5%` = quantile(x, 0.975))
+}))
+rownames(summary_std_genes) <- paste0("Gene", 1:n_genes)
+
+# 2. Extract Dose Intercepts (Columns 1:5) & Transform to Probability Scale
+alpha_std <- ext_std$betas[, 1:5]
+summary_std_dose <- t(apply(alpha_std, 2, function(x) {
+  c(Posterior_Logit = mean(x), Fitted_Prob = mean(plogis(x)), True_Skeleton = 0)
+}))
+rownames(summary_std_dose) <- paste0("Dose_", 1:n_doses)
+summary_std_dose[, "True_Skeleton"] <- skeleton
+
+# --- PRINT COMPARATIVE SUMMARIES ---
+cat("\n===========================================================\n")
+cat("1. STANDARD BINOMIAL MODEL (Unconstrained Cauchy Priors)\n")
+cat("===========================================================\n")
+cat("--- Dose Intercepts (Monotonicity Check) ---\n")
+print(round(summary_std_dose, 3))
+
+cat("\n--- Gene Coefficients ---\n")
+print(round(summary_std_genes, 3))
+
+cat("\n===========================================================\n")
+cat("2. BIOTITE RETROSPECTIVE MODEL (Skeleton & Monotonic Priors)\n")
+cat("===========================================================\n")
+cat("--- Dose Intercepts (Strictly Monotonic) ---\n")
+print(round(alpha_summary, 3))
+
+cat("\n--- Gene Coefficients ---\n")
+print(round(beta_summary, 3))
+
+
+
+# ==============================================================================
+# BASELINE 0: CLASSICAL MAXIMUM LIKELIHOOD REGRESSION (With Monotonicity Check)
+# ==============================================================================
+# Fit standard logistic regression via R glm()
+fit_glm <- glm(
+  dlt ~ 0 + factor(dose) + Gene1 + Gene2 + Gene3 + Gene4 + Gene5,
+  data   = df_sim,
+  family = binomial(link = "logit")
+)
+
+# Extract classical estimates and standard errors
+summary_glm <- summary(fit_glm)$coefficients
+colnames(summary_glm) <- c("Estimate", "Std_Error", "z_value", "p_value")
+
+# 1. Extract Dose Intercepts (Rows 1:5) and Gene Coefficients (Rows 6:10)
+dose_rows <- 1:n_doses
+gene_rows <- (n_doses + 1):(n_doses + n_genes)
+
+# 2. Transform Dose Intercepts to Probability Scale
+dose_glm <- summary_glm[dose_rows, ]
+summary_glm_dose <- data.frame(
+  Logit_Estimate = dose_glm[, "Estimate"],
+  Std_Error      = dose_glm[, "Std_Error"],
+  Fitted_Prob    = plogis(dose_glm[, "Estimate"]),
+  True_Skeleton  = skeleton
+)
+rownames(summary_glm_dose) <- paste0("Dose_", 1:n_doses)
+
+summary_glm_genes <- summary_glm[gene_rows, ]
+
+# --- PRINT TIER 0 RESULTS ---
+cat("\n===========================================================\n")
+cat("TIER 0: CLASSICAL GLM (Maximum Likelihood via IRLS)\n")
+cat("===========================================================\n")
+cat("--- Dose Intercepts & Probability Scale (Monotonicity Check) ---\n")
+print(round(summary_glm_dose, 3))
+
+cat("\n--- Gene Coefficients ---\n")
+print(round(summary_glm_genes, 3))
