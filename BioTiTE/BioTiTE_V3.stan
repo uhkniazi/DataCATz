@@ -74,7 +74,8 @@ model {
   delta ~ normal(prior_means_delta, prior_sds_delta);
 
   // Global genomic shrinkage priors
-  tau ~ exponential(1.0);
+  // Loosened hierarchical tau prior (Marginal SD ≈ 2.83)
+  tau ~ exponential(0.5);
   beta_cov_raw ~ normal(0, 1.0);
 
   // Likelihood
